@@ -46,8 +46,19 @@ rsync -a "${PW_REPO}/orchestrator/apps/" "${ORCH_HOME}/apps/"
 echo "Syncing Ansible configs..."
 rsync -a --delete "${PW_REPO}/ansible/" "${ORCH_HOME}/ansible/"
 
+# Sync terraform directory
+echo "Syncing Terraform configs..."
+rsync -a --delete \
+  --exclude='.terraform' \
+  --exclude='*.tfstate*' \
+  --exclude='environments/*.tfvars' \
+  "${PW_REPO}/terraform/" "${ORCH_HOME}/terraform/"
+
+# Ensure certs directory exists
+mkdir -p "${ORCH_HOME}/certs"
+
 # Fix ownership
-chown -R orchestrator:orchestrator "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible"
+chown -R orchestrator:orchestrator "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs"
 
 # Restart service
 echo "Restarting orchestrator service..."

@@ -17,6 +17,7 @@ const deployRoutes = require('./src/routes/deploy');
 const infraRoutes = require('./src/routes/infra');
 const databaseRoutes = require('./src/routes/database');
 const operationRoutes = require('./src/routes/operations');
+const lifecycleRoutes = require('./src/routes/lifecycle');
 
 async function start() {
   logger.info('server', `Starting orchestrator API (${config.nodeEnv})`);
@@ -61,6 +62,7 @@ async function start() {
   app.use(infraRoutes);
   app.use(databaseRoutes);
   app.use(operationRoutes);
+  app.use(lifecycleRoutes);
 
   // 404
   app.use((req, res) => {

@@ -56,6 +56,20 @@ async function readSecret(path) {
   }
 }
 
+async function writeSecret(path, data) {
+  await ensureToken();
+
+  if (!vaultClient) throw new Error('Vault not available — cannot write secrets');
+
+  try {
+    await vaultClient.write(path, { data });
+    logger.info('vault', `Wrote secret at ${path}`);
+  } catch (err) {
+    logger.error('vault', `Failed to write secret at ${path}: ${err.message}`);
+    throw err;
+  }
+}
+
 async function getAppSecrets(app) {
   const vaultPrefix = `secret/data/apps/${app}`;
   const secrets = await readSecret(vaultPrefix);
@@ -69,4 +83,4 @@ async function getApiKey() {
   return secrets?.api_key || null;
 }
 
-module.exports = { initVault, readSecret, getAppSecrets, getApiKey };
+module.exports = { initVault, readSecret, writeSecret, getAppSecrets, getApiKey };

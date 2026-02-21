@@ -1,0 +1,69 @@
+const { Router } = require('express');
+const { success, error } = require('../utils/response');
+const appRegistry = require('../services/appRegistry');
+const lifecycle = require('../services/lifecycleOrchestrator');
+const credentialGenerator = require('../services/credentialGenerator');
+
+const router = Router();
+
+function requireAppEnv(req, res) {
+  const app = appRegistry.get(req.params.app);
+  if (!app) { error(res, `App '${req.params.app}' not found`, 404); return null; }
+  const env = appRegistry.getEnvironment(req.params.app, req.params.env);
+  if (!env) { error(res, `Environment '${req.params.env}' not found`, 404); return null; }
+  return { appName: req.params.app, envName: req.params.env };
+}
+
+// Generate and store secrets for an environment
+router.post('/api/_y_/apps/:app/envs/:env/secrets/generate', async (req, res) => {
+  try {
+    const ctx = requireAppEnv(req, res);
+    if (!ctx) return;
+
+    const { force } = req.body || {};
+    const result = await credentialGenerator.generateEnvSecrets(ctx.appName, ctx.envName, { force });
+    return success(res, result, result.created ? 'Secrets generated and stored in Vault' : 'Secrets already exist');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+// Verify infra secrets exist in Vault
+router.get('/api/_x_/infra/secrets/verify', async (req, res) => {
+  try {
+    const result = await credentialGenerator.verifyInfraSecrets();
+    return success(res, result, 'Infra secrets verified');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+// Build entire environment from scratch (creds → terraform → provision → deploy)
+router.post('/api/_y_/apps/:app/envs/:env/build', async (req, res) => {
+  try {
+    const ctx = requireAppEnv(req, res);
+    if (!ctx) return;
+
+    const { ref, force } = req.body || {};
+    const result = await lifecycle.buildEnvironment(ctx.appName, ctx.envName, { ref, force });
+    return success(res, result, result.message, 202);
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+// Destroy environment infrastructure
+router.post('/api/_y_/apps/:app/envs/:env/destroy', async (req, res) => {
+  try {
+    const ctx = requireAppEnv(req, res);
+    if (!ctx) return;
+
+    const { ref } = req.body || {};
+    const result = await lifecycle.destroyEnvironment(ctx.appName, ctx.envName, { ref });
+    return success(res, result, result.message, 202);
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+module.exports = router;

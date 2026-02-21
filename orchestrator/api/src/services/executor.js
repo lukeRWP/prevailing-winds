@@ -8,6 +8,8 @@ const vault = require('./vault');
 const gitManager = require('./gitManager');
 const queue = require('./operationQueue');
 const appRegistry = require('./appRegistry');
+const tfvarsGenerator = require('./tfvarsGenerator');
+const ansibleVarsGenerator = require('./ansibleVarsGenerator');
 
 const activeProcesses = new Map();
 const sseClients = new Map();
@@ -15,7 +17,22 @@ const envLocks = new Map();
 
 const PROCESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const DEFAULT_SSH_KEY_PATH = process.env.ANSIBLE_SSH_PRIVATE_KEY_FILE || path.join(config.orchestratorHome, '.ssh', 'deploy_key');
-const DEFAULT_VAULT_PASS_PATH = path.join(config.orchestratorHome, '.vault-pass');
+
+// Operation types that use infrastructure (Terraform/Ansible from PW repo)
+const INFRA_OPS = [
+  'provision', 'deploy', 'deploy-server', 'deploy-client', 'rollback',
+  'infra-plan', 'infra-apply', 'infra-destroy',
+  'infra-plan-shared', 'infra-apply-shared',
+  'db-setup', 'db-migrate', 'db-backup', 'db-seed', 'seed',
+  'env-start', 'env-stop',
+];
+
+const TERRAFORM_OPS = ['infra-plan', 'infra-apply', 'infra-destroy', 'infra-plan-shared', 'infra-apply-shared'];
+const ANSIBLE_OPS = [
+  'provision', 'deploy', 'deploy-server', 'deploy-client', 'rollback',
+  'db-setup', 'db-migrate', 'db-backup', 'db-seed', 'seed',
+  'env-start', 'env-stop',
+];
 
 function lockKey(app, env) {
   return `${app}:${env}`;
@@ -56,55 +73,74 @@ async function executeOperation(op) {
     const manifest = appRegistry.get(app);
     if (!manifest) throw new Error(`Unknown app: ${app}`);
 
-    const secrets = await vault.getAppSecrets(app);
+    // Read secrets from Vault
+    const appSecrets = await vault.getAppSecrets(app);
+    const infraSecrets = await vault.readSecret('secret/data/pw/infra') || {};
 
-    // Write credentials to tmpfs (fall back to local deploy key if Vault unavailable)
-    let sshKeyPath = await writeTempSecret(secrets.ssh_private_key, 'id_rsa', tempFiles);
+    // Write SSH key to tmpfs (prefer infra secrets, fall back to app secrets, then local file)
+    const sshKey = infraSecrets.ssh_private_key || appSecrets.ssh_private_key;
+    let sshKeyPath = await writeTempSecret(sshKey, 'id_rsa', tempFiles);
     if (!sshKeyPath && fs.existsSync(DEFAULT_SSH_KEY_PATH)) {
       sshKeyPath = DEFAULT_SSH_KEY_PATH;
       appendAndEmit(id, `[orchestrator] Using local SSH key (Vault not configured)\n`);
     }
-    let vaultPassPath = await writeTempSecret(secrets.vault_password, 'vault_pass', tempFiles);
-    if (!vaultPassPath && fs.existsSync(DEFAULT_VAULT_PASS_PATH)) {
-      vaultPassPath = DEFAULT_VAULT_PASS_PATH;
-      appendAndEmit(id, `[orchestrator] Using local vault password (Vault not configured)\n`);
-    }
 
-    // Ensure repo is cloned and at the right ref
+    // Ensure app repo is cloned and at the right ref (needed for deploy operations)
     await gitManager.ensureRepo(app, manifest.repo);
     const sha = await gitManager.pull(app, ref || 'main');
-
     appendAndEmit(id, `[orchestrator] Checked out ${sha.substring(0, 8)}\n`);
 
-    const repoDir = gitManager.repoDir(app);
-    const infraDir = path.join(repoDir, manifest.infraPath || 'infra');
+    // Infrastructure lives in PW's directories on the orchestrator, not the app repo
+    const infraDir = config.orchestratorHome;
 
-    const childEnv = buildChildEnv({ secrets, sshKeyPath, vaultPassPath, manifest, env });
+    // Auto-generate tfvars before Terraform operations
+    if (TERRAFORM_OPS.includes(type)) {
+      const isShared = type.includes('shared');
+      const tfEnv = isShared ? 'shared' : env;
+      appendAndEmit(id, `[orchestrator] Generating tfvars for ${tfEnv}...\n`);
+      await tfvarsGenerator.writeTfvars(app, tfEnv);
+    }
+
+    // Auto-generate Ansible vault.yml from HashiCorp Vault before Ansible operations
+    if (ANSIBLE_OPS.includes(type) && env !== 'shared') {
+      const inventoryDir = path.join(infraDir, 'ansible', 'inventories', env);
+      try {
+        appendAndEmit(id, `[orchestrator] Generating Ansible vars from Vault for ${app}:${env}...\n`);
+        await ansibleVarsGenerator.writeAnsibleVaultFile(app, env, inventoryDir);
+      } catch (err) {
+        appendAndEmit(id, `[orchestrator] Warning: Could not generate Ansible vars: ${err.message}\n`);
+      }
+    }
+
+    const childEnv = buildChildEnv({ infraSecrets, appSecrets, sshKeyPath, manifest, env });
     const parsedVars = typeof vars === 'string' ? JSON.parse(vars) : (vars || {});
 
     let cmd, args, cwd;
 
     switch (type) {
       case 'provision':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, parsedVars, 'provision'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'provision'));
         break;
       case 'deploy':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, { ...parsedVars, environment_name: env }, 'deploy'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, { ...parsedVars, environment_name: env }, 'deploy'));
         break;
       case 'deploy-server':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, { ...parsedVars, environment_name: env, deploy_component: 'server' }, 'deploy'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, { ...parsedVars, environment_name: env, deploy_component: 'server' }, 'deploy'));
         break;
       case 'deploy-client':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, { ...parsedVars, environment_name: env, deploy_component: 'client' }, 'deploy'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, { ...parsedVars, environment_name: env, deploy_component: 'client' }, 'deploy'));
         break;
       case 'rollback':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, { ...parsedVars, environment_name: env, rollback: 'true' }, 'rollback'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, { ...parsedVars, environment_name: env, rollback: 'true' }, 'rollback'));
         break;
       case 'infra-plan':
         ({ cmd, args, cwd } = buildTerraformCmd(infraDir, 'plan', env, manifest, parsedVars));
         break;
       case 'infra-apply':
         ({ cmd, args, cwd } = buildTerraformCmd(infraDir, 'apply', env, manifest, parsedVars));
+        break;
+      case 'infra-destroy':
+        ({ cmd, args, cwd } = buildTerraformCmd(infraDir, 'destroy', env, manifest, parsedVars));
         break;
       case 'infra-plan-shared':
         ({ cmd, args, cwd } = buildTerraformCmd(infraDir, 'plan', 'shared', manifest, parsedVars));
@@ -113,19 +149,19 @@ async function executeOperation(op) {
         ({ cmd, args, cwd } = buildTerraformCmd(infraDir, 'apply', 'shared', manifest, parsedVars));
         break;
       case 'db-setup':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, parsedVars, 'db-setup'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-setup'));
         break;
       case 'db-migrate':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, parsedVars, 'db-migrate'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-migrate'));
         break;
       case 'db-backup':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, parsedVars, 'db-backup'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-backup'));
         break;
       case 'db-seed':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, parsedVars, 'db-seed'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-seed'));
         break;
       case 'seed':
-        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, 'ansible/site.yml', env, manifest, parsedVars, 'seed'));
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'seed'));
         break;
       case 'env-start':
         ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'env-start'));
@@ -203,21 +239,30 @@ function spawnAndStream(opId, cmd, args, opts) {
   });
 }
 
-function buildChildEnv({ secrets, sshKeyPath, vaultPassPath, manifest, env }) {
+function buildChildEnv({ infraSecrets, appSecrets, sshKeyPath, manifest, env }) {
   const childEnv = { ...process.env };
 
-  // Terraform vars
-  if (secrets.proxmox_api_token) childEnv.TF_VAR_proxmox_api_token = secrets.proxmox_api_token;
-  if (secrets.unifi_api_key) childEnv.TF_VAR_unifi_api_key = secrets.unifi_api_key;
-  if (secrets.aws_access_key_id) childEnv.AWS_ACCESS_KEY_ID = secrets.aws_access_key_id;
-  if (secrets.aws_secret_access_key) childEnv.AWS_SECRET_ACCESS_KEY = secrets.aws_secret_access_key;
+  // Terraform credentials from infra secrets (preferred) or app secrets (fallback)
+  const tfSecrets = { ...appSecrets, ...infraSecrets };
+  if (tfSecrets.proxmox_api_token) childEnv.TF_VAR_proxmox_api_token = tfSecrets.proxmox_api_token;
+  if (tfSecrets.unifi_api_key) childEnv.TF_VAR_unifi_api_key = tfSecrets.unifi_api_key;
 
-  // Ansible vars
-  if (sshKeyPath) childEnv.ANSIBLE_SSH_PRIVATE_KEY_FILE = sshKeyPath;
-  if (vaultPassPath) childEnv.ANSIBLE_VAULT_PASSWORD_FILE = vaultPassPath;
+  // MinIO/S3 credentials for Terraform backend
+  if (tfSecrets.minio_access_key) childEnv.AWS_ACCESS_KEY_ID = tfSecrets.minio_access_key;
+  if (tfSecrets.minio_secret_key) childEnv.AWS_SECRET_ACCESS_KEY = tfSecrets.minio_secret_key;
+  // Fallback to old key names
+  if (!childEnv.AWS_ACCESS_KEY_ID && tfSecrets.aws_access_key_id) childEnv.AWS_ACCESS_KEY_ID = tfSecrets.aws_access_key_id;
+  if (!childEnv.AWS_SECRET_ACCESS_KEY && tfSecrets.aws_secret_access_key) childEnv.AWS_SECRET_ACCESS_KEY = tfSecrets.aws_secret_access_key;
 
-  // SSH for git operations
+  // MinIO CA cert for Terraform S3 backend TLS
+  const minioCaCertPath = path.join(config.orchestratorHome, 'certs', 'minio-ca.crt');
+  if (fs.existsSync(minioCaCertPath)) {
+    childEnv.AWS_CA_BUNDLE = minioCaCertPath;
+  }
+
+  // Ansible SSH key
   if (sshKeyPath) {
+    childEnv.ANSIBLE_SSH_PRIVATE_KEY_FILE = sshKeyPath;
     childEnv.GIT_SSH_COMMAND = `ssh -i ${sshKeyPath} -o StrictHostKeyChecking=accept-new`;
   }
 
@@ -265,17 +310,14 @@ function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
   const tfWorkspace = envConfig ? (envConfig.terraformWorkspace || workspace) : 'default';
   const tfvarsFile = path.join('environments', `${workspace}.tfvars`);
 
-  // Terraform uses workspaces, not separate directories
-  // First select workspace, then run the action
-  const args = [];
-
   // Build init + workspace select + action as a single shell command
   const cmds = [
+    'terraform init -input=false',
     `terraform workspace select ${tfWorkspace} || terraform workspace new ${tfWorkspace}`,
   ];
 
   const actionArgs = [action];
-  if (action === 'apply') actionArgs.push('-auto-approve');
+  if (action === 'apply' || action === 'destroy') actionArgs.push('-auto-approve');
   if (fs.existsSync(path.join(tfDir, tfvarsFile))) {
     actionArgs.push(`-var-file=${tfvarsFile}`);
   }

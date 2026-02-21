@@ -5,7 +5,6 @@
 name: imp
 displayName: "IMP Expansions Management"
 repo: "git@github.com:lukeRWP/Expansions-Management.git"
-infraPath: "infra"
 vaultPrefix: "secret/apps/imp"
 
 # VM template — what services each environment gets
