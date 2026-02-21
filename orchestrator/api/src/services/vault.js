@@ -12,11 +12,15 @@ async function initVault() {
   }
 
   try {
-    const vault = require('node-vault')({
+    const vaultOpts = {
       apiVersion: 'v1',
       endpoint: config.vault.addr,
-      requestOptions: { strictSSL: false }
-    });
+    };
+    // Only disable SSL verification for HTTPS endpoints
+    if (config.vault.addr.startsWith('https')) {
+      vaultOpts.requestOptions = { strictSSL: false };
+    }
+    const vault = require('node-vault')(vaultOpts);
 
     const result = await vault.approleLogin({
       role_id: config.vault.roleId,
