@@ -17,7 +17,7 @@ terraform {
 
     # MinIO S3-compatible endpoint on management VLAN (HTTPS with self-signed cert)
     endpoints = {
-      s3 = "https://10.0.5.43:9000"
+      s3 = "https://10.0.100.13:9000"
     }
 
     skip_credentials_validation = true
