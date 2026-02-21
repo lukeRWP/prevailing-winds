@@ -1,0 +1,355 @@
+---
+# Read-only environment health check — safe to run anytime, no changes made
+# Usage: ansible-playbook playbooks/env-status.yml -i inventories/dev/hosts.yml
+#
+# Reports per service: active state, port reachability, service-specific health
+
+- name: "Environment status: {{ env_name | default('unknown') }}"
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../roles/app-server/defaults/main.yml
+    - ../roles/minio/defaults/main.yml
+    - ../roles/mysql/defaults/main.yml
+
+  tasks:
+    # --- MySQL status ---
+    - name: Check MySQL service state
+      command: systemctl is-active mysql
+      register: mysql_active
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_databases', [])
+
+    - name: Check MySQL port reachable
+      wait_for:
+        port: "{{ mysql_port }}"
+        timeout: 3
+      register: mysql_port_check
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_databases', [])
+
+    - name: Check MySQL accepts queries
+      command: mysql --defaults-file=/root/.my.cnf -e "SELECT 1"
+      register: mysql_query
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_databases', []) and mysql_active.rc == 0
+
+    - name: Check MySQL disk usage
+      command: df -h {{ mysql_data_dir }} --output=size,used,avail,pcent
+      register: mysql_disk
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_databases', [])
+
+    - name: MySQL status report
+      debug:
+        msg:
+          service: "{{ mysql_active.stdout | default('unknown') }}"
+          port: "{{ 'reachable' if mysql_port_check is not failed else 'unreachable' }}"
+          queries: "{{ 'accepting' if mysql_query.rc | default(1) == 0 else 'failing' }}"
+          disk: "{{ mysql_disk.stdout_lines | default([]) }}"
+      when: inventory_hostname in groups.get('imp_databases', [])
+
+    # --- MinIO status ---
+    - name: Check MinIO service state
+      command: systemctl is-active minio
+      register: minio_active
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_storage', [])
+
+    - name: Check MinIO port reachable
+      wait_for:
+        port: "{{ minio_port }}"
+        timeout: 3
+      register: minio_port_check
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_storage', [])
+
+    - name: Check MinIO health endpoint
+      uri:
+        url: "https://localhost:{{ minio_port }}/minio/health/live"
+        status_code: 200
+        validate_certs: no
+        timeout: 5
+      register: minio_health
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_storage', []) and minio_active.rc == 0
+
+    - name: Check MinIO disk usage
+      command: df -h {{ minio_data_dir }} --output=size,used,avail,pcent
+      register: minio_disk
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_storage', [])
+
+    - name: MinIO status report
+      debug:
+        msg:
+          service: "{{ minio_active.stdout | default('unknown') }}"
+          port: "{{ 'reachable' if minio_port_check is not failed else 'unreachable' }}"
+          health: "{{ 'healthy' if minio_health.status | default(0) == 200 else 'unhealthy' }}"
+          disk: "{{ minio_disk.stdout_lines | default([]) }}"
+      when: inventory_hostname in groups.get('imp_storage', [])
+
+    # --- App server status ---
+    - name: Check app server service state
+      command: systemctl is-active {{ app_server_service_name }}
+      register: server_active
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_servers', [])
+
+    - name: Check app server port reachable
+      wait_for:
+        port: "{{ app_server_port }}"
+        timeout: 3
+      register: server_port_check
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_servers', [])
+
+    - name: Check app server health
+      uri:
+        url: "http://localhost:{{ app_server_port }}/health"
+        status_code: 200
+        return_content: yes
+        timeout: 10
+      register: server_health
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_servers', []) and server_active.rc == 0
+
+    - name: App server status report
+      debug:
+        msg:
+          service: "{{ server_active.stdout | default('unknown') }}"
+          port: "{{ 'reachable' if server_port_check is not failed else 'unreachable' }}"
+          health: "{{ server_health.json | default({'error': 'unreachable'}) }}"
+      when: inventory_hostname in groups.get('imp_servers', [])
+
+    # --- Nginx status ---
+    - name: Check nginx service state
+      command: systemctl is-active nginx
+      register: nginx_active
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups.get('imp_clients', [])
+
+    - name: Check nginx HTTP port reachable
+      wait_for:
+        port: 80
+        timeout: 3
+      register: nginx_port_check
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_clients', [])
+
+    - name: Check nginx HTTPS port reachable
+      wait_for:
+        port: 443
+        timeout: 3
+      register: nginx_ssl_check
+      ignore_errors: true
+      when: inventory_hostname in groups.get('imp_clients', [])
+
+    - name: Nginx status report
+      debug:
+        msg:
+          service: "{{ nginx_active.stdout | default('unknown') }}"
+          http: "{{ 'reachable' if nginx_port_check is not failed else 'unreachable' }}"
+          https: "{{ 'reachable' if nginx_ssl_check is not failed else 'unreachable' }}"
+      when: inventory_hostname in groups.get('imp_clients', [])
+
+    # --- Host-level metrics ---
+    - name: Check system memory
+      shell: free -m | awk '/^Mem:/ {printf "total=%sMB used=%sMB free=%sMB (%.0f%% used)", $2, $3, $4, ($3/$2)*100}'
+      register: memory_info
+      changed_when: false
+      failed_when: false
+
+    - name: Check system load
+      command: uptime
+      register: uptime_info
+      changed_when: false
+      failed_when: false
+
+    - name: Host metrics
+      debug:
+        msg:
+          host: "{{ inventory_hostname }}"
+          ip: "{{ ansible_host }}"
+          memory: "{{ memory_info.stdout | default('unavailable') }}"
+          uptime: "{{ uptime_info.stdout | default('unavailable') }}"
+
+# --- Cross-service connectivity tests ---
+# Verifies that services can reach their dependencies across the environment VLAN
+
+- name: "Network connectivity: server → dependencies"
+  hosts: imp_servers
+  become: no
+  gather_facts: no
+  vars_files:
+    - ../roles/mysql/defaults/main.yml
+    - ../roles/minio/defaults/main.yml
+  tasks:
+    - name: "Server → MySQL (port {{ mysql_port }})"
+      wait_for:
+        host: "{{ hostvars[groups['imp_databases'][0]].ansible_host }}"
+        port: "{{ mysql_port }}"
+        timeout: 5
+      register: server_to_mysql
+      ignore_errors: true
+
+    - name: "Server → MinIO (port {{ minio_port }})"
+      wait_for:
+        host: "{{ hostvars[groups['imp_storage'][0]].ansible_host }}"
+        port: "{{ minio_port }}"
+        timeout: 5
+      register: server_to_minio
+      ignore_errors: true
+
+    - name: Server connectivity report
+      debug:
+        msg:
+          to_mysql: "{{ 'reachable' if server_to_mysql is not failed else 'UNREACHABLE' }}"
+          to_minio: "{{ 'reachable' if server_to_minio is not failed else 'UNREACHABLE' }}"
+
+- name: "Network connectivity: client → server"
+  hosts: imp_clients
+  become: no
+  gather_facts: no
+  vars_files:
+    - ../roles/app-server/defaults/main.yml
+  tasks:
+    - name: "Client → App Server (port {{ app_server_port }})"
+      wait_for:
+        host: "{{ hostvars[groups['imp_servers'][0]].ansible_host }}"
+        port: "{{ app_server_port }}"
+        timeout: 5
+      register: client_to_server
+      ignore_errors: true
+
+    - name: Client connectivity report
+      debug:
+        msg:
+          to_app_server: "{{ 'reachable' if client_to_server is not failed else 'UNREACHABLE' }}"
+
+# --- Certificate expiry checks ---
+# Warns if any cert expires within 30 days (2592000 seconds)
+
+- name: "Certificate expiry: MySQL SSL"
+  hosts: imp_databases
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/mysql/defaults/main.yml
+  tasks:
+    - name: Check MySQL cert expiry (30-day warning)
+      command: >
+        openssl x509 -checkend 2592000
+        -in {{ mysql_ssl_dir }}/{{ item }}
+        -noout
+      loop:
+        - ca.pem
+        - server-cert.pem
+        - client-cert.pem
+      register: mysql_cert_expiry
+      changed_when: false
+      failed_when: false
+
+    - name: Get MySQL cert expiry dates
+      shell: >
+        openssl x509 -enddate -noout
+        -in {{ mysql_ssl_dir }}/{{ item }}
+        | cut -d= -f2
+      loop:
+        - ca.pem
+        - server-cert.pem
+        - client-cert.pem
+      register: mysql_cert_dates
+      changed_when: false
+      failed_when: false
+
+    - name: MySQL certificate report
+      debug:
+        msg: "{{ item.item }}: expires {{ mysql_cert_dates.results[idx].stdout | default('unknown') }}{{ ' ⚠ EXPIRING SOON' if item.rc != 0 else '' }}"
+      loop: "{{ mysql_cert_expiry.results }}"
+      loop_control:
+        index_var: idx
+        label: "{{ item.item }}"
+
+- name: "Certificate expiry: MinIO TLS"
+  hosts: imp_storage
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/minio/defaults/main.yml
+  tasks:
+    - name: Check MinIO cert expiry (30-day warning)
+      command: >
+        openssl x509 -checkend 2592000
+        -in {{ minio_config_dir }}/certs/public.crt
+        -noout
+      register: minio_cert_expiry
+      changed_when: false
+      failed_when: false
+
+    - name: Get MinIO cert expiry date
+      shell: >
+        openssl x509 -enddate -noout
+        -in {{ minio_config_dir }}/certs/public.crt
+        | cut -d= -f2
+      register: minio_cert_date
+      changed_when: false
+      failed_when: false
+
+    - name: MinIO certificate report
+      debug:
+        msg: "public.crt: expires {{ minio_cert_date.stdout | default('unknown') }}{{ ' ⚠ EXPIRING SOON' if minio_cert_expiry.rc != 0 else '' }}"
+
+- name: "Certificate expiry: Nginx TLS"
+  hosts: imp_clients
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/nginx/defaults/main.yml
+  tasks:
+    - name: Determine Nginx cert path
+      set_fact:
+        nginx_cert_path: "{{ '/etc/letsencrypt/live/' + nginx_server_name + '/fullchain.pem' if nginx_tls_mode | default('letsencrypt') == 'letsencrypt' else '/etc/ssl/certs/imp-selfsigned.crt' }}"
+
+    - name: Check Nginx cert exists
+      stat:
+        path: "{{ nginx_cert_path }}"
+      register: nginx_cert_stat
+
+    - name: Check Nginx cert expiry (30-day warning)
+      command: >
+        openssl x509 -checkend 2592000
+        -in {{ nginx_cert_path }}
+        -noout
+      register: nginx_cert_expiry
+      changed_when: false
+      failed_when: false
+      when: nginx_cert_stat.stat.exists
+
+    - name: Get Nginx cert expiry date
+      shell: >
+        openssl x509 -enddate -noout
+        -in {{ nginx_cert_path }}
+        | cut -d= -f2
+      register: nginx_cert_date
+      changed_when: false
+      failed_when: false
+      when: nginx_cert_stat.stat.exists
+
+    - name: Nginx certificate report
+      debug:
+        msg: "{{ nginx_cert_path }}: expires {{ nginx_cert_date.stdout | default('unknown') }}{{ ' ⚠ EXPIRING SOON' if nginx_cert_expiry.rc | default(1) != 0 else '' }}"
+      when: nginx_cert_stat.stat.exists
+
+    - name: Nginx certificate missing
+      debug:
+        msg: "WARNING: No TLS certificate found at {{ nginx_cert_path }}"
+      when: not nginx_cert_stat.stat.exists

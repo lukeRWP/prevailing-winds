@@ -1,0 +1,109 @@
+---
+# Full provisioning playbook
+
+# Create secure staging directory for SSL cert transfers (controller-side)
+- name: Prepare SSL cert staging directory
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Create secure staging directory
+      file:
+        path: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}"
+        state: directory
+        mode: "0700"
+
+- name: Common setup for all hosts
+  hosts: all
+  become: yes
+  roles:
+    - common
+    - node-exporter
+
+- name: Configure database servers
+  hosts: imp_databases
+  become: yes
+  roles:
+    - mysql
+
+- name: Configure storage servers
+  hosts: imp_storage
+  become: yes
+  roles:
+    - minio
+
+- name: Configure application servers
+  hosts: imp_servers
+  become: yes
+  roles:
+    - nodejs
+    - app-server
+
+- name: Configure web servers
+  hosts: imp_clients
+  become: yes
+  roles:
+    - nodejs
+    - nginx
+    - app-client
+
+- name: Configure monitoring servers
+  hosts: imp_monitoring
+  become: yes
+  roles:
+    - prometheus
+    - grafana
+
+# Safety-net: remove SSL certs staged on the Ansible controller during
+# the mysql and minio roles. The app-server role already cleans up via its
+# own always block, but this catches the case where the app-server play
+# was never reached (e.g. minio or earlier play failed after fetching certs).
+- name: Clean up temporary SSL certs on controller
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Remove {{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }} staging directory
+      file:
+        path: {{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}
+        state: absent
+
+# -----------------------------------------------------------------------
+# Post-provision: narrow NOPASSWD:ALL → scoped command lists (INFRA-M36)
+# -----------------------------------------------------------------------
+# This MUST run last, after every role that uses become:true has finished.
+# During provisioning the deploy and runner users have broad sudo so that
+# Ansible modules (apt, file, template, etc.) can execute freely.  Once
+# provisioning is complete we replace the sudoers drop-ins with files that
+# restrict each user to only the commands they need day-to-day.
+#
+# Tag: post-provision  (always included in a full site.yml run)
+- name: Harden sudoers — scope deploy user to required commands
+  hosts: all
+  become: yes
+  tags:
+    - post-provision
+  tasks:
+    - name: Replace broad deploy sudoers with scoped permissions
+      template:
+        src: "{{ playbook_dir }}/../roles/common/templates/sudoers-deploy.j2"
+        dest: "/etc/sudoers.d/{{ deploy_user }}"
+        mode: "0440"
+        validate: "visudo -cf %s"
+      vars:
+        deploy_user: "{{ deploy_user | default('deploy') }}"
+
+- name: Harden sudoers — scope runner user to required commands
+  hosts: imp_runner
+  become: yes
+  tags:
+    - post-provision
+  tasks:
+    - name: Replace broad runner sudoers with scoped permissions
+      template:
+        src: "{{ playbook_dir }}/../roles/github-runner/templates/sudoers-runner.j2"
+        dest: "/etc/sudoers.d/{{ runner_user }}"
+        mode: "0440"
+        validate: "visudo -cf %s"
+      vars:
+        runner_user: "{{ runner_user | default('runner') }}"

@@ -1,0 +1,16 @@
+# Managed by Ansible — do not edit manually
+# Configures additional NICs for environment VLAN access
+# Allows the runner to reach dev/qa/prod VMs directly
+network:
+  version: 2
+  ethernets:
+{% for nic in runner_env_nics %}
+    {{ nic.interface }}:
+      addresses:
+        - {{ nic.address }}
+      routes:
+        - to: {{ nic.subnet }}
+          via: {{ nic.gateway }}
+          metric: {{ nic.metric | default(200) }}
+      mtu: 1500
+{% endfor %}

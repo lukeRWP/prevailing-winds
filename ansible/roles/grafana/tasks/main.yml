@@ -1,0 +1,98 @@
+---
+# Grafana — visualization dashboard on the monitoring VM
+
+- name: Fail if Grafana admin password is empty in non-dev environments
+  fail:
+    msg: >-
+      grafana_admin_password must be set for non-dev environments.
+      Inject it via Vault or group_vars.
+  when:
+    - grafana_admin_password | default('') | length == 0
+    - env | default('dev') != 'dev'
+
+- name: Add Grafana APT key
+  apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana APT repository
+  apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+
+- name: Install Grafana
+  apt:
+    name: grafana
+    state: present
+    update_cache: true
+  notify: restart grafana
+
+- name: Deploy Grafana configuration
+  template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Deploy Prometheus datasource provisioning
+  template:
+    src: datasource-prometheus.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Deploy dashboard provisioning config
+  copy:
+    dest: /etc/grafana/provisioning/dashboards/imp.yml
+    content: |
+      apiVersion: 1
+      providers:
+        - name: IMP
+          orgId: 1
+          folder: IMP
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards
+            foldersFromFilesStructure: false
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Create dashboards directory
+  file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+
+- name: Deploy IMP node dashboard
+  copy:
+    src: imp-node-dashboard.json
+    dest: /var/lib/grafana/dashboards/imp-node-dashboard.json
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Enable and start Grafana
+  systemd:
+    name: grafana-server
+    enabled: true
+    state: started
+
+- name: Allow Grafana port in firewall
+  community.general.ufw:
+    rule: allow
+    port: "3000"
+    proto: tcp
+    from_ip: "{{ internal_cidr }}"
+    comment: "Grafana web UI"
+  when: ansible_facts.services is defined and 'ufw' in ansible_facts.services

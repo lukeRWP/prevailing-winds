@@ -1,0 +1,25 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - qemu-guest-agent
+  - unattended-upgrades
+  - fail2ban
+  - ufw
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+  # SSH hardening (Ansible reinforces later)
+  - sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+  - sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - sed -i 's/^#*X11Forwarding.*/X11Forwarding no/' /etc/ssh/sshd_config
+  - sed -i 's/^#*MaxAuthTries.*/MaxAuthTries 3/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+  # Firewall baseline (Ansible adds role-specific rules later)
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw --force enable
+
+disable_root: true

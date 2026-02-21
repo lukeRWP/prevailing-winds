@@ -1,0 +1,136 @@
+---
+# Graceful environment shutdown in reverse dependency order
+# Usage: ansible-playbook playbooks/env-stop.yml -i inventories/dev/hosts.yml
+#
+# Stop order (reverse of start):
+#   1. App server (depends on DB + MinIO)
+#   2. Nginx (depends on app server)
+#   3. MinIO (storage layer)
+#   4. MySQL (data layer — stopped last)
+
+- name: "Stop environment: {{ env_name | default('unknown') }}"
+  hosts: all
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/app-server/defaults/main.yml
+    - ../roles/minio/defaults/main.yml
+    - ../roles/mysql/defaults/main.yml
+
+  tasks:
+    # --- 1. Stop app server ---
+    - name: Stop app server (imp-server)
+      block:
+        - name: Check if imp-server service exists
+          command: systemctl is-enabled {{ app_server_service_name }}
+          register: server_exists
+          changed_when: false
+          failed_when: false
+
+        - name: Stop imp-server
+          service:
+            name: "{{ app_server_service_name }}"
+            state: stopped
+          when: server_exists.rc == 0
+
+        - name: Wait for app server port to close
+          wait_for:
+            port: "{{ app_server_port }}"
+            state: stopped
+            timeout: 30
+          when: server_exists.rc == 0
+          ignore_errors: true
+
+        - name: Report app server status
+          debug:
+            msg: "App server {{ 'stopped' if server_exists.rc == 0 else 'not installed — skipped' }}"
+      when: inventory_hostname in groups.get('imp_servers', [])
+      ignore_errors: true
+
+    # --- 2. Stop nginx ---
+    - name: Stop nginx
+      block:
+        - name: Check if nginx service exists
+          command: systemctl is-enabled nginx
+          register: nginx_exists
+          changed_when: false
+          failed_when: false
+
+        - name: Stop nginx
+          service:
+            name: nginx
+            state: stopped
+          when: nginx_exists.rc == 0
+
+        - name: Report nginx status
+          debug:
+            msg: "Nginx {{ 'stopped' if nginx_exists.rc == 0 else 'not installed — skipped' }}"
+      when: inventory_hostname in groups.get('imp_clients', [])
+      ignore_errors: true
+
+    # --- 3. Stop MinIO ---
+    - name: Stop MinIO
+      block:
+        - name: Check if minio service exists
+          command: systemctl is-enabled minio
+          register: minio_exists
+          changed_when: false
+          failed_when: false
+
+        - name: Stop minio
+          service:
+            name: minio
+            state: stopped
+          when: minio_exists.rc == 0
+
+        - name: Wait for MinIO port to close
+          wait_for:
+            port: "{{ minio_port }}"
+            state: stopped
+            timeout: 30
+          when: minio_exists.rc == 0
+          ignore_errors: true
+
+        - name: Report MinIO status
+          debug:
+            msg: "MinIO {{ 'stopped' if minio_exists.rc == 0 else 'not installed — skipped' }}"
+      when: inventory_hostname in groups.get('imp_storage', [])
+      ignore_errors: true
+
+    # --- 4. Stop MySQL (last — everything depends on it) ---
+    - name: Stop MySQL
+      block:
+        - name: Check if mysql service exists
+          command: systemctl is-enabled mysql
+          register: mysql_exists
+          changed_when: false
+          failed_when: false
+
+        - name: Stop mysql
+          service:
+            name: mysql
+            state: stopped
+          when: mysql_exists.rc == 0
+
+        - name: Wait for MySQL port to close
+          wait_for:
+            port: "{{ mysql_port }}"
+            state: stopped
+            timeout: 60
+          when: mysql_exists.rc == 0
+          ignore_errors: true
+
+        - name: Report MySQL status
+          debug:
+            msg: "MySQL {{ 'stopped' if mysql_exists.rc == 0 else 'not installed — skipped' }}"
+      when: inventory_hostname in groups.get('imp_databases', [])
+      ignore_errors: true
+
+- name: Environment stop summary
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Report
+      debug:
+        msg: "Environment {{ env_name | default('unknown') }} stop sequence complete"

@@ -1,0 +1,28 @@
+---
+# Provision shared infrastructure (Vault + Runner + Orchestrator)
+# Usage: ansible-playbook playbooks/shared.yml -i inventories/shared/hosts.yml
+
+- name: Common setup for shared hosts
+  hosts: all
+  become: yes
+  roles:
+    - common
+
+- name: Configure Vault server
+  hosts: imp_vault
+  become: yes
+  roles:
+    - vault
+
+- name: Configure GitHub Actions runner
+  hosts: imp_runner
+  become: yes
+  roles:
+    - github-runner
+
+- name: Configure Orchestrator
+  hosts: imp_orchestrator
+  become: yes
+  roles:
+    - nodejs
+    - orchestrator

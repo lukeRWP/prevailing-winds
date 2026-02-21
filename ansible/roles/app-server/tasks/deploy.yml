@@ -1,0 +1,85 @@
+---
+- name: Set release directory
+  set_fact:
+    release_dir: "{{ app_server_releases_dir }}/{{ release_version | default(ansible_date_time.iso8601_basic_short) }}"
+
+- name: Create release directory
+  file:
+    path: "{{ release_dir }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Extract server tarball
+  unarchive:
+    src: "{{ server_tarball }}"
+    dest: "{{ release_dir }}"
+    remote_src: "{{ server_tarball_remote | default(false) }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+
+- name: Symlink shared .env
+  file:
+    src: "{{ app_server_shared_dir }}/.env"
+    dest: "{{ release_dir }}/.env"
+    state: link
+    owner: "{{ deploy_user }}"
+
+- name: Symlink shared mysql-ssl
+  file:
+    src: "{{ app_server_shared_dir }}/mysql-ssl"
+    dest: "{{ release_dir }}/mysql-ssl"
+    state: link
+    owner: "{{ deploy_user }}"
+
+- name: Symlink shared tessdata
+  file:
+    src: "{{ app_server_shared_dir }}/tessdata"
+    dest: "{{ release_dir }}/tessdata"
+    state: link
+    owner: "{{ deploy_user }}"
+
+- name: Install production dependencies
+  command: npm ci --production
+  args:
+    chdir: "{{ release_dir }}"
+  become_user: "{{ deploy_user }}"
+  environment:
+    NODE_ENV: production
+  when: not (rollback | default(false) | bool)
+
+- name: Update current symlink
+  file:
+    src: "{{ release_dir }}"
+    dest: "{{ app_server_current_link }}"
+    state: link
+    owner: "{{ deploy_user }}"
+    force: yes
+
+- name: Restart server (systemd ExecStop handles graceful PM2 shutdown)
+  service:
+    name: "{{ app_server_service_name }}"
+    state: restarted
+
+- name: Wait for connection drain
+  pause:
+    seconds: 5
+
+- name: Wait for server port
+  wait_for:
+    port: "{{ app_server_port }}"
+    state: started
+    timeout: 30
+
+- name: Wait for health check
+  uri:
+    url: "http://localhost:{{ app_server_port }}/health/live"
+    status_code: 200
+  register: health_check
+  retries: 12
+  delay: 5
+  until: health_check.status == 200
+
+- name: Cleanup old releases
+  include_tasks: cleanup.yml

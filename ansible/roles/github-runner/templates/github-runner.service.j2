@@ -1,0 +1,27 @@
+[Unit]
+Description=GitHub Actions Runner ({{ runner_name }})
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+{% if runner_ephemeral | default(true) %}
+# Ephemeral mode: re-configure before each start so the runner
+# registers as a fresh single-use instance.
+ExecStartPre={{ runner_home }}/ephemeral-configure.sh
+Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED={{ runner_cleanup_script }}
+{% endif %}
+ExecStart={{ runner_home }}/run.sh
+User={{ runner_user }}
+Group={{ runner_group }}
+WorkingDirectory={{ runner_home }}
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+Restart=always
+RestartSec=5
+ProtectSystem=full
+ProtectHome=read-only
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

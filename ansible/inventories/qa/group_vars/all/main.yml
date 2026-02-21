@@ -1,0 +1,27 @@
+---
+# QA environment configuration
+# Secrets are in vault.yml (encrypted with ansible-vault)
+
+# MySQL (non-secret config)
+mysql_require_ssl: true
+mysql_init_databases: false
+mysql_innodb_buffer_pool_size: "2G"
+
+# Nginx — HTTPS with self-signed cert for QA
+nginx_server_name: "web.qa.razorwire-productions.com"
+nginx_backend_server: "{{ hostvars[groups['imp_servers'][0]].ansible_host }}"
+nginx_tls_mode: "selfsigned"
+
+# Network — VLAN 110 for QA environment
+internal_cidr: "10.0.110.0/24"
+management_cidr: "10.0.5.0/24"
+
+# App server
+app_server_node_env: "staging"
+
+# Map vault_ secrets to role variable names
+mysql_root_password: "{{ vault_mysql_root_password }}"
+mysql_app_password: "{{ vault_mysql_password }}"
+mysql_ssl_password: "{{ vault_mysql_ssl_password }}"
+minio_access_key: "{{ vault_s3_access_key }}"
+minio_secret_key: "{{ vault_s3_secret_key }}"

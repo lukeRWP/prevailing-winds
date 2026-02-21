@@ -1,0 +1,121 @@
+---
+# Prometheus — runs on the monitoring VM
+# Scrapes node_exporter + application metrics from all VMs
+
+- name: Create prometheus system user
+  user:
+    name: prometheus
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Create Prometheus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: "0755"
+  loop:
+    - /etc/prometheus
+    - /etc/prometheus/rules
+    - /var/lib/prometheus
+
+- name: Download Prometheus {{ prometheus_version }}
+  get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: /tmp/prometheus.tar.gz
+    mode: "0644"
+
+- name: Extract Prometheus
+  unarchive:
+    src: /tmp/prometheus.tar.gz
+    dest: /tmp/
+    remote_src: true
+
+- name: Install Prometheus binaries
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  loop:
+    - prometheus
+    - promtool
+  notify: restart prometheus
+
+- name: Deploy Prometheus configuration
+  template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+  notify: reload prometheus
+
+- name: Deploy alerting rules
+  template:
+    src: alert_rules.yml.j2
+    dest: /etc/prometheus/rules/imp_alerts.yml
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+  notify: reload prometheus
+
+- name: Create Prometheus systemd unit
+  copy:
+    dest: /etc/systemd/system/prometheus.service
+    content: |
+      [Unit]
+      Description=Prometheus Monitoring
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      User=prometheus
+      Group=prometheus
+      Type=simple
+      ExecStart=/usr/local/bin/prometheus \
+        --config.file=/etc/prometheus/prometheus.yml \
+        --storage.tsdb.path=/var/lib/prometheus \
+        --storage.tsdb.retention.time={{ prometheus_retention }} \
+        --web.listen-address=:9090
+      ExecReload=/bin/kill -HUP $MAINPID
+      Restart=always
+      RestartSec=5
+      ProtectSystem=full
+      ProtectHome=yes
+      PrivateTmp=yes
+      NoNewPrivileges=yes
+      ReadWritePaths={{ prometheus_data_dir | default('/opt/prometheus/data') }}
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+  notify: restart prometheus
+
+- name: Enable and start Prometheus
+  systemd:
+    name: prometheus
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Allow Prometheus port in firewall
+  community.general.ufw:
+    rule: allow
+    port: "9090"
+    proto: tcp
+    from_ip: "{{ monitoring_network | default('10.0.1.0/24') }}"
+    comment: "Prometheus web UI"
+  when: ansible_facts.services is defined and 'ufw' in ansible_facts.services
+
+- name: Clean up download
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/prometheus.tar.gz
+    - "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"

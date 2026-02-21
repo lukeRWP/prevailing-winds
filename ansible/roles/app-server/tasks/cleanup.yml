@@ -1,0 +1,13 @@
+---
+- name: List release directories
+  find:
+    paths: "{{ app_server_releases_dir }}"
+    file_type: directory
+  register: release_dirs
+
+- name: Remove old releases (keep {{ app_server_keep_releases }})
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (release_dirs.files | sort(attribute='mtime') | reverse | list)[app_server_keep_releases:] }}"
+  when: release_dirs.files | length > app_server_keep_releases

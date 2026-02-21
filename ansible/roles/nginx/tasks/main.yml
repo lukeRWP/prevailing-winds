@@ -1,0 +1,87 @@
+---
+- name: Install nginx and certbot
+  apt:
+    name:
+      - nginx
+      - certbot
+      - python3-certbot-nginx
+    state: present
+
+- name: Remove default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Deploy vhost configuration
+  template:
+    src: "{{ 'imp-https.conf.j2' if nginx_tls_mode != 'none' else 'imp-http-only.conf.j2' }}"
+    dest: /etc/nginx/sites-available/imp.conf
+    mode: "0644"
+  notify: reload nginx
+
+- name: Enable IMP site
+  file:
+    src: /etc/nginx/sites-available/imp.conf
+    dest: /etc/nginx/sites-enabled/imp.conf
+    state: link
+  notify: reload nginx
+
+- name: Allow HTTP through UFW
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Allow HTTPS through UFW
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+  when: nginx_tls_mode != "none"
+
+- name: Hide nginx version in responses
+  lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: '^\s*#?\s*server_tokens'
+    line: "\tserver_tokens off;"
+    insertafter: 'http {'
+  notify: reload nginx
+
+- name: Ensure nginx is running
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
+- name: Generate self-signed certificate
+  command: >
+    openssl req -x509 -nodes -days 365
+    -newkey ec -pkeyopt ec_paramgen_curve:P-256
+    -keyout /etc/ssl/private/imp-selfsigned.key
+    -out /etc/ssl/certs/imp-selfsigned.crt
+    -subj "/CN={{ nginx_server_name }}"
+  args:
+    creates: /etc/ssl/certs/imp-selfsigned.crt
+  when: nginx_tls_mode == "selfsigned"
+  notify: reload nginx
+
+- name: Obtain Let's Encrypt certificate
+  command: >
+    certbot --nginx
+    -d {{ nginx_server_name }}
+    --non-interactive
+    --agree-tos
+    -m {{ nginx_certbot_email }}
+    --redirect
+  args:
+    creates: "/etc/letsencrypt/live/{{ nginx_server_name }}/fullchain.pem"
+  when: nginx_tls_mode == "letsencrypt"
+  notify: reload nginx
+
+- name: Enable certbot auto-renewal timer
+  systemd:
+    name: certbot.timer
+    state: started
+    enabled: yes
+  when: nginx_tls_mode == "letsencrypt"

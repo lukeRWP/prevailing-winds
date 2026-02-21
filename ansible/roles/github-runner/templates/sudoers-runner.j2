@@ -1,0 +1,15 @@
+# Scoped sudoers for the runner user ({{ runner_user }})
+# Managed by Ansible — do not edit manually.
+#
+# This file replaces the broad NOPASSWD:ALL that is used during
+# Ansible provisioning.  It limits the runner user to only the
+# commands required for CI builds and deploy triggers.
+
+# Service management (restart services after deploy)
+{{ runner_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl
+{{ runner_user }} ALL=(ALL) NOPASSWD: /usr/sbin/service
+
+# Container management (CI builds)
+{{ runner_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker
+{{ runner_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker-compose
+{{ runner_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose *

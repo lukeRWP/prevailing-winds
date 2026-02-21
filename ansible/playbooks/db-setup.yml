@@ -1,0 +1,7 @@
+---
+- name: Initialize IMP databases
+  hosts: imp_databases
+  become: yes
+  roles:
+    - role: mysql
+      mysql_init_databases: true

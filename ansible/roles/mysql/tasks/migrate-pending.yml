@@ -1,0 +1,101 @@
+---
+# Apply only PENDING migrations from SQL/migrations/
+# Expects: migration files already copied to /tmp/imp-migrations/ by the calling playbook
+# Each migration file self-records in IMP_ADMIN.schema_migrations via INSERT IGNORE
+
+- name: Check migrations directory exists
+  stat:
+    path: /tmp/imp-migrations
+  register: migrations_dir
+
+- name: Verify MySQL is reachable
+  shell: mysql --defaults-file=/root/.my.cnf -e "SELECT 1" 2>&1
+  register: mysql_check
+  changed_when: false
+  when: migrations_dir.stat.exists
+
+- name: Fail fast if MySQL is not reachable
+  fail:
+    msg: |
+      Cannot connect to MySQL on this host.
+      Ensure MySQL is installed, running, and /root/.my.cnf is configured.
+      Error: {{ mysql_check.stdout | default('') }} {{ mysql_check.stderr | default('') }}
+  when:
+    - migrations_dir.stat.exists
+    - mysql_check.rc != 0
+
+- name: Ensure schema_migrations table exists
+  shell: |
+    mysql --defaults-file=/root/.my.cnf -e "
+      CREATE DATABASE IF NOT EXISTS IMP_ADMIN;
+      CREATE TABLE IF NOT EXISTS IMP_ADMIN.schema_migrations (
+        migration VARCHAR(255) NOT NULL PRIMARY KEY,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );" 2>&1
+  changed_when: false
+  when: migrations_dir.stat.exists
+
+- name: Find numbered migration SQL files
+  find:
+    paths: /tmp/imp-migrations
+    patterns: "[0-9]*.sql"
+    excludes: "000_COMBINED_MIGRATIONS.sql"
+  register: migration_files
+  when: migrations_dir.stat.exists
+
+- name: Apply pending migrations
+  shell: |
+    MIGRATION_NAME=$(basename "{{ item.path }}" .sql)
+    ALREADY_APPLIED=$(mysql --defaults-file=/root/.my.cnf -N -B \
+      -e "SELECT COUNT(*) FROM IMP_ADMIN.schema_migrations WHERE migration='${MIGRATION_NAME}';" 2>&1)
+    RC=$?
+    if [ $RC -ne 0 ]; then
+      echo "ERROR: Failed to check migration status for ${MIGRATION_NAME}: ${ALREADY_APPLIED}"
+      exit 1
+    fi
+    if [ "$ALREADY_APPLIED" != "0" ]; then
+      echo "SKIP: ${MIGRATION_NAME} (already applied)"
+      exit 0
+    fi
+    echo "APPLYING: ${MIGRATION_NAME}"
+    mysql --defaults-file=/root/.my.cnf < "{{ item.path }}" 2>&1
+    RC=$?
+    if [ $RC -eq 0 ]; then
+      echo "SUCCESS: ${MIGRATION_NAME}"
+    else
+      echo "FAILED: ${MIGRATION_NAME} (exit code ${RC})"
+    fi
+    exit $RC
+  loop: "{{ migration_files.files | default([]) | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: migration_results
+  ignore_errors: true
+  when:
+    - migrations_dir.stat.exists
+    - migration_files.files | default([]) | length > 0
+
+- name: Report migration results
+  debug:
+    msg: "{{ item.stdout_lines | default(['No output']) }}"
+  loop: "{{ migration_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.path | basename | default('unknown') }}"
+  when:
+    - migration_results is defined
+    - migration_results.results is defined
+    - item.stdout is defined
+    - item.stdout | length > 0
+
+- name: Fail if any migration errored
+  fail:
+    msg: "One or more migrations failed. See report above."
+  when:
+    - migration_results is defined
+    - migration_results.results is defined
+    - migration_results.results | selectattr('failed', 'defined') | selectattr('failed') | list | length > 0
+
+- name: Cleanup temp migration files
+  file:
+    path: /tmp/imp-migrations
+    state: absent

@@ -1,0 +1,45 @@
+# IMP HTTP reverse proxy (no TLS — dev/internal use only)
+server {
+    listen 80;
+    server_name {{ nginx_server_name }};
+
+    client_max_body_size {{ nginx_client_max_body_size }};
+
+    # Static client files
+    root /var/www/imp-client;
+    index index.html;
+
+    # API reverse proxy
+    location /api/ {
+        proxy_pass http://{{ nginx_backend_server }}:{{ nginx_backend_port }}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # Health check endpoint
+    location /health {
+        proxy_pass http://{{ nginx_backend_server }}:{{ nginx_backend_port }}/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    # SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "0" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+}

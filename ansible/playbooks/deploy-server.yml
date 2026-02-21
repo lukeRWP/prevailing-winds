@@ -1,0 +1,113 @@
+---
+# Deploy IMP server application
+# Usage: ansible-playbook playbooks/deploy-server.yml -i inventories/dev/hosts.yml --become -e tarball=/path/to/imp-server.tar.gz
+- name: Deploy IMP Server
+  hosts: imp_servers
+  become: yes
+  vars:
+    release_ts: "{{ ansible_date_time.iso8601_basic_short }}"
+    release_dir: "{{ app_server_releases_dir }}/{{ release_ts }}"
+    app_server_base_dir: /opt/imp-server
+    app_server_releases_dir: "{{ app_server_base_dir }}/releases"
+    app_server_shared_dir: "{{ app_server_base_dir }}/shared"
+    app_server_current_link: "{{ app_server_base_dir }}/current"
+    app_server_keep_releases: 3
+    app_server_service_name: imp-server
+    deploy_user: deploy
+
+  tasks:
+    - name: Verify tarball variable is set
+      assert:
+        that: tarball is defined
+        fail_msg: "Pass -e tarball=/path/to/imp-server.tar.gz"
+
+    - name: Create release directory
+      file:
+        path: "{{ release_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Upload and extract tarball
+      unarchive:
+        src: "{{ tarball }}"
+        dest: "{{ release_dir }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Ensure shared .env has restrictive permissions
+      file:
+        path: "{{ app_server_shared_dir }}/.env"
+        mode: "0600"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Symlink shared .env into release
+      file:
+        src: "{{ app_server_shared_dir }}/.env"
+        dest: "{{ release_dir }}/.env"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Symlink shared mysql-ssl into release
+      file:
+        src: "{{ app_server_shared_dir }}/mysql-ssl"
+        dest: "{{ release_dir }}/mysql-ssl"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Install npm dependencies
+      command: npm ci --production --ignore-scripts
+      args:
+        chdir: "{{ release_dir }}"
+      become_user: "{{ deploy_user }}"
+      environment:
+        HOME: "/home/{{ deploy_user }}"
+
+    - name: Update current symlink
+      file:
+        src: "{{ release_dir }}"
+        dest: "{{ app_server_current_link }}"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        force: yes
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart imp-server
+      systemd:
+        name: "{{ app_server_service_name }}"
+        state: restarted
+        enabled: yes
+
+    - name: Wait for server to start listening
+      wait_for:
+        port: "{{ app_server_port | default(2727) }}"
+        timeout: 30
+
+    - name: Wait for server to be healthy
+      uri:
+        url: "http://127.0.0.1:{{ app_server_port | default(2727) }}/health/live"
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+    - name: Prune old releases
+      shell: |
+        cd {{ app_server_releases_dir }}
+        ls -dt */ | tail -n +{{ app_server_keep_releases + 1 }} | xargs -r rm -rf
+      args:
+        executable: /bin/bash
+      become_user: "{{ deploy_user }}"
+
+    - name: Show deploy result
+      debug:
+        msg: "Server deployed to {{ release_dir }} — health check {{ 'PASSED' if health.status is defined else 'PENDING' }}"

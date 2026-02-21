@@ -1,0 +1,35 @@
+[Unit]
+Description=IMP Database Backup
+Documentation=https://github.com/your-org/Expansions-Management
+After=network-online.target docker.service
+Requires=docker.service
+# Trigger failure notification unit on error
+OnFailure=imp-db-backup-notify-failure@%n.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/imp
+EnvironmentFile=/opt/imp/.env
+
+# Run the backup script; it auto-generates a timestamped filename under the output dir
+ExecStart=/bin/bash -c '/opt/imp/scripts/db-backup.sh --output /opt/imp-db/backups/backup-$(date +%%Y%%m%%d_%%H%%M%%S).sql'
+
+# Prune backups older than 30 days after a successful dump
+ExecStartPost=/usr/bin/find /opt/imp-db/backups -name "backup-*.sql" -mtime +30 -delete
+
+# Give the dump up to 30 minutes before we consider it hung
+TimeoutStartSec=1800
+
+# Security hardening (matches existing IMP service conventions)
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectHome=read-only
+ReadWritePaths=/opt/imp-db/backups
+
+# Journal metadata
+SyslogIdentifier=imp-db-backup
+StandardOutput=journal
+StandardError=journal

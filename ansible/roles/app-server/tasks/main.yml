@@ -1,0 +1,97 @@
+---
+- name: Create server directory structure
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+  loop:
+    - "{{ app_server_base_dir }}"
+    - "{{ app_server_releases_dir }}"
+    - "{{ app_server_shared_dir }}"
+    - "{{ app_server_shared_dir }}/mysql-ssl"
+    - "{{ app_server_shared_dir }}/tessdata"
+
+# --- Deploy SSL certs fetched to controller, then clean up temp files ---
+- name: Deploy SSL certificates from controller staging area
+  block:
+    - name: Deploy MySQL client SSL certificates
+      copy:
+        src: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ hostvars[groups['imp_databases'][0]].inventory_hostname }}/{{ item.name }}"
+        dest: "{{ app_server_shared_dir }}/mysql-ssl/{{ item.name }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: "ca.pem", mode: "0644" }
+        - { name: "client-cert.pem", mode: "0644" }
+        - { name: "client-key.pem", mode: "0600" }
+      when: mysql_require_ssl | default(true) | bool
+      notify: restart imp-server
+
+    - name: Deploy MinIO TLS certificate for Node.js trust
+      copy:
+        src: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ hostvars[groups['imp_storage'][0]].inventory_hostname }}/public.crt"
+        dest: "{{ app_server_shared_dir }}/minio-ca.crt"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+      when: groups['imp_storage'] is defined and groups['imp_storage'] | length > 0
+      notify: restart imp-server
+
+  always:
+    - name: Remove temporary SSL certs from Ansible controller
+      file:
+        path: {{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}
+        state: absent
+      delegate_to: localhost
+      become: no
+      run_once: true
+
+- name: Deploy server .env from vault secrets
+  template:
+    src: env.j2
+    dest: "{{ app_server_shared_dir }}/.env"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Deploy server systemd unit
+  template:
+    src: imp-server.service.j2
+    dest: /etc/systemd/system/{{ app_server_service_name }}.service
+    mode: "0644"
+  notify:
+    - reload systemd
+
+- name: Allow server port through UFW
+  ufw:
+    rule: allow
+    port: "{{ app_server_port }}"
+    proto: tcp
+    from_ip: "{{ client_server_ip | default(internal_cidr) }}"
+
+- name: Allow server port from management network (runner access)
+  ufw:
+    rule: allow
+    port: "{{ app_server_port }}"
+    proto: tcp
+    from_ip: "{{ management_cidr }}"
+  when: management_cidr is defined and management_cidr != internal_cidr
+
+- name: Configure PM2 log rotation
+  copy:
+    content: |
+      /home/{{ deploy_user }}/.pm2/logs/*.log {
+        daily
+        rotate 14
+        compress
+        delaycompress
+        missingok
+        notifempty
+        copytruncate
+      }
+    dest: /etc/logrotate.d/pm2
+    mode: "0644"

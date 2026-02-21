@@ -1,0 +1,106 @@
+---
+# Capistrano-style client deployment
+# Forward deploy: extract to timestamped release dir → update current symlink → sync to web root
+# Rollback: repoint symlink to previous release → sync to web root
+
+# --- Rollback path ---
+- name: "Rollback: find previous release"
+  shell: ls -dt {{ app_client_releases_dir }}/*/ | head -2 | tail -1
+  register: previous_release
+  changed_when: false
+  when: rollback | default(false) | bool
+
+- name: "Rollback: verify previous release exists"
+  assert:
+    that: previous_release.stdout | length > 0
+    fail_msg: "No previous release found for rollback"
+  when: rollback | default(false) | bool
+
+- name: "Rollback: update current symlink to previous release"
+  file:
+    src: "{{ previous_release.stdout | trim }}"
+    dest: "{{ app_client_current_link }}"
+    state: link
+    owner: "{{ deploy_user }}"
+    force: yes
+  when: rollback | default(false) | bool
+
+- name: "Rollback: sync previous release to web root"
+  synchronize:
+    src: "{{ app_client_current_link }}/"
+    dest: "{{ app_client_web_root }}/"
+    delete: yes
+    recursive: yes
+  delegate_to: "{{ inventory_hostname }}"
+  when: rollback | default(false) | bool
+
+- name: "Rollback: set web root ownership"
+  file:
+    path: "{{ app_client_web_root }}"
+    owner: www-data
+    group: www-data
+    recurse: yes
+  when: rollback | default(false) | bool
+  notify: reload nginx
+
+- name: End play for rollback
+  meta: end_host
+  when: rollback | default(false) | bool
+
+# --- Forward deploy path ---
+- name: Set release directory
+  set_fact:
+    release_dir: "{{ app_client_releases_dir }}/{{ release_version | default(ansible_date_time.iso8601_basic_short) }}"
+
+- name: Create release directory
+  file:
+    path: "{{ release_dir }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Extract client tarball to release directory
+  unarchive:
+    src: "{{ client_tarball }}"
+    dest: "{{ release_dir }}"
+    remote_src: "{{ client_tarball_remote | default(false) }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+
+- name: Update current symlink
+  file:
+    src: "{{ release_dir }}"
+    dest: "{{ app_client_current_link }}"
+    state: link
+    owner: "{{ deploy_user }}"
+    force: yes
+
+- name: Sync release to web root
+  synchronize:
+    src: "{{ app_client_current_link }}/"
+    dest: "{{ app_client_web_root }}/"
+    delete: yes
+    recursive: yes
+  delegate_to: "{{ inventory_hostname }}"
+
+- name: Set web root ownership
+  file:
+    path: "{{ app_client_web_root }}"
+    owner: www-data
+    group: www-data
+    recurse: yes
+
+- name: Reload nginx
+  service:
+    name: nginx
+    state: reloaded
+
+- name: Cleanup old releases
+  shell: |
+    cd {{ app_client_releases_dir }}
+    ls -dt */ | tail -n +{{ app_client_keep_releases + 1 }} | xargs -r rm -rf
+  args:
+    executable: /bin/bash
+  become_user: "{{ deploy_user }}"
+  changed_when: false

@@ -1,0 +1,17 @@
+---
+# Configure additional network interfaces for environment VLANs
+# The runner gets a NIC on each environment VLAN (100/110/120) so it can
+# run Ansible deployments directly to environment VMs without routing
+# through the UniFi gateway.
+
+- name: Deploy netplan config for environment VLAN NICs
+  template:
+    src: netplan-env-nics.yml.j2
+    dest: /etc/netplan/60-imp-env-vlans.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: apply netplan
+
+- name: Flush handler to apply netplan immediately
+  meta: flush_handlers

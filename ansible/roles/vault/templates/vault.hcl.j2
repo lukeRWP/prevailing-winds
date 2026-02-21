@@ -1,0 +1,23 @@
+# IMP Vault Server Configuration
+
+ui = true
+
+listener "tcp" {
+  address     = "{{ vault_address }}:{{ vault_port }}"
+  tls_disable = {{ vault_tls_disable | lower }}
+{% if not vault_tls_disable %}
+  tls_cert_file = "{{ vault_tls_cert_file }}"
+  tls_key_file  = "{{ vault_tls_key_file }}"
+{% endif %}
+}
+
+storage "{{ vault_storage_backend }}" {
+{% if vault_storage_backend == "file" %}
+  path = "{{ vault_data_dir }}"
+{% endif %}
+}
+
+api_addr     = "{{ 'http' if vault_tls_disable else 'https' }}://{{ ansible_host }}:{{ vault_port }}"
+cluster_addr = "{{ 'http' if vault_tls_disable else 'https' }}://{{ ansible_host }}:{{ vault_cluster_port }}"
+
+log_level = "info"

@@ -1,0 +1,13 @@
+# HTTP-only vhost for ACME challenge (replaced by HTTPS after cert issuance)
+server {
+    listen 80;
+    server_name {{ nginx_server_name }};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

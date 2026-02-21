@@ -1,0 +1,249 @@
+---
+# Full deployment orchestration
+# Usage: ansible-playbook playbooks/deploy-all.yml -i inventories/ENV/hosts.yml -e environment_name=ENV
+# Rollback: add -e rollback=true
+
+- name: Pre-deployment checks
+  hosts: imp_servers
+  become: no
+  gather_facts: no
+  tasks:
+    - name: Verify server tarball exists
+      stat:
+        path: "{{ server_tarball }}"
+      delegate_to: localhost
+      register: server_tar
+      when: server_tarball is defined
+
+    - name: Verify client tarball exists
+      stat:
+        path: "{{ client_tarball }}"
+      delegate_to: localhost
+      register: client_tar
+      when: client_tarball is defined
+
+- name: Pre-deploy config validation
+  hosts: imp_servers
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Verify shared .env exists
+      stat:
+        path: "{{ app_server_shared_dir | default('/opt/imp-server/shared') }}/.env"
+      register: env_file
+
+    - name: Fail if .env is missing
+      fail:
+        msg: >
+          Shared .env not found at {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/.env.
+          Deploy cannot proceed without server configuration.
+      when: not env_file.stat.exists
+
+    - name: Check MySQL SSL certs exist
+      stat:
+        path: "{{ app_server_shared_dir | default('/opt/imp-server/shared') }}/mysql-ssl/{{ item }}"
+      loop:
+        - client-cert.pem
+        - client-key.pem
+        - ca.pem
+      register: mysql_ssl_files
+      when: mysql_require_ssl | default(true) | bool
+
+    - name: Fail if MySQL SSL certs are missing
+      fail:
+        msg: >
+          MySQL SSL cert missing: {{ item.item }}.
+          Expected at {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/mysql-ssl/{{ item.item }}
+      loop: "{{ mysql_ssl_files.results | default([]) }}"
+      when:
+        - mysql_require_ssl | default(true) | bool
+        - not item.stat.exists
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check MySQL SSL certs not expired
+      command: >
+        openssl x509 -checkend 0
+        -in {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/mysql-ssl/{{ item }}
+        -noout
+      loop:
+        - client-cert.pem
+        - ca.pem
+      register: cert_expiry
+      failed_when: cert_expiry.rc != 0
+      when: mysql_require_ssl | default(true) | bool
+
+    - name: Check MinIO CA cert exists
+      stat:
+        path: "{{ app_server_shared_dir | default('/opt/imp-server/shared') }}/minio-ca.crt"
+      register: minio_ca
+      when: minio_use_ssl | default(false) | bool
+
+    - name: Fail if MinIO CA cert is missing
+      fail:
+        msg: "MinIO CA cert missing at {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/minio-ca.crt"
+      when:
+        - minio_use_ssl | default(false) | bool
+        - not minio_ca.stat.exists
+
+- name: Ensure MySQL config matches inventory
+  hosts: imp_databases
+  become: yes
+  vars_files:
+    - ../roles/mysql/defaults/main.yml
+  tasks:
+    - name: Deploy current MySQL configuration
+      template:
+        src: "../roles/mysql/templates/imp-mysql.cnf.j2"
+        dest: "{{ mysql_config_dir | default('/etc/mysql/mysql.conf.d') }}/imp.cnf"
+        owner: mysql
+        group: mysql
+        mode: "0644"
+      register: mysql_config_changed
+
+    - name: Restart MySQL if config changed
+      service:
+        name: mysql
+        state: restarted
+      when: mysql_config_changed.changed
+
+    - name: Wait for MySQL to accept connections
+      command: mysqladmin -u root -p'{{ mysql_root_password }}' ping
+      register: mysql_ping
+      retries: 12
+      delay: 5
+      until: mysql_ping.rc == 0
+      changed_when: false
+      no_log: true
+      when: mysql_config_changed.changed
+
+- name: Database backup (production safety)
+  hosts: imp_databases
+  become: yes
+  tasks:
+    - name: Pre-deploy database backup
+      command: >
+        mysqldump -u root -p{{ mysql_root_password }}
+        --all-databases
+        --result-file={{ mysql_backup_dir | default('/opt/imp-db/backups') }}/pre-deploy-{{ ansible_date_time.iso8601_basic_short }}.sql
+      when: environment_name | default('dev') != 'dev'
+      no_log: true
+
+- name: Ensure MySQL is running
+  hosts: imp_databases
+  become: yes
+  tasks:
+    - name: Check MySQL service status
+      command: systemctl is-active mysql
+      register: mysql_status
+      changed_when: false
+      failed_when: false
+
+    - name: Restart MySQL if not active
+      service:
+        name: mysql
+        state: restarted
+      register: mysql_restart
+      when: mysql_status.stdout != 'active'
+      ignore_errors: true
+
+    - name: Capture MySQL error log on startup failure
+      shell: |
+        echo "=== systemctl status ==="
+        systemctl status mysql --no-pager 2>&1 || true
+        echo "=== journalctl (last 40 lines) ==="
+        journalctl -u mysql --no-pager -n 40 2>&1 || true
+        echo "=== MySQL error log (last 40 lines) ==="
+        tail -40 /var/log/mysql/error.log 2>/dev/null || tail -40 /var/log/mysqld.log 2>/dev/null || echo "No error log found"
+        echo "=== Disk space ==="
+        df -h /var/lib/mysql 2>/dev/null || df -h /
+      register: mysql_diag
+      when: mysql_restart is defined and mysql_restart is failed
+
+    - name: Show MySQL diagnostics
+      debug:
+        msg: "{{ mysql_diag.stdout_lines }}"
+      when: mysql_diag is defined and mysql_diag.stdout_lines is defined
+
+    - name: Fail with diagnostics if MySQL cannot start
+      fail:
+        msg: "MySQL failed to start. See diagnostics above."
+      when: mysql_restart is defined and mysql_restart is failed
+
+    - name: Start MySQL if already active
+      service:
+        name: mysql
+        state: started
+      when: mysql_status.stdout == 'active'
+
+    - name: Wait for MySQL socket
+      wait_for:
+        path: /var/run/mysqld/mysqld.sock
+        timeout: 60
+
+    - name: Verify MySQL accepts connections
+      command: mysql --defaults-file=/root/.my.cnf -e "SELECT 1"
+      changed_when: false
+
+- name: Run pending database migrations
+  hosts: imp_databases
+  become: yes
+  tasks:
+    - name: Pre-migration backup (QA/Prod only)
+      command: >
+        mysqldump -u root -p{{ mysql_root_password }}
+        --all-databases
+        --result-file={{ mysql_backup_dir | default('/opt/imp-db/backups') }}/pre-migrate-{{ ansible_date_time.iso8601_basic_short }}.sql
+      when:
+        - environment_name | default('dev') != 'dev'
+        - not (rollback | default(false) | bool)
+      no_log: true
+
+    - name: Copy migration files to database host
+      copy:
+        src: "{{ db_migrations_path | default(playbook_dir + '/../../../SQL/migrations/') }}"
+        dest: /tmp/imp-migrations/
+        mode: "0644"
+      when: not (rollback | default(false) | bool)
+
+    - name: Apply pending migrations
+      include_role:
+        name: mysql
+        tasks_from: migrate-pending
+      when: not (rollback | default(false) | bool)
+
+- name: Deploy server
+  hosts: imp_servers
+  become: yes
+  tasks:
+    - name: Run server deployment
+      include_role:
+        name: app-server
+        tasks_from: deploy
+
+- name: Deploy client
+  hosts: imp_clients
+  become: yes
+  tasks:
+    - name: Run client deployment
+      include_role:
+        name: app-client
+        tasks_from: deploy
+
+- name: Post-deployment verification
+  hosts: imp_servers
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Final health check
+      uri:
+        url: "http://localhost:{{ app_server_port | default(2727) }}/health"
+        status_code: 200
+      register: final_health
+      retries: 6
+      delay: 10
+      until: final_health.status == 200
+
+    - name: Report deployment status
+      debug:
+        msg: "IMP {{ environment_name | default('dev') }} deployment complete. Server healthy."

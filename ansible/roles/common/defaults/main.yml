@@ -1,0 +1,26 @@
+---
+common_packages:
+  - curl
+  - wget
+  - git
+  - jq
+  - htop
+  - unzip
+  - gnupg
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+
+ntp_timezone: America/New_York
+deploy_user: deploy
+deploy_authorized_keys: []
+ssh_port: 22
+
+# Network CIDRs — override in inventories/<env>/group_vars/all/main.yml
+# internal_cidr: the environment's own VLAN (default: management VLAN)
+# management_cidr: VLAN 87 for cross-environment runner/vault access
+internal_cidr: "10.0.5.0/24"
+management_cidr: "10.0.5.0/24"

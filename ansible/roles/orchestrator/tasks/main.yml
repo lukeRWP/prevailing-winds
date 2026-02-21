@@ -1,0 +1,236 @@
+---
+# --- System user ---
+- name: Create orchestrator group
+  group:
+    name: "{{ orchestrator_group }}"
+    system: yes
+
+- name: Create orchestrator user
+  user:
+    name: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    home: "{{ orchestrator_home }}"
+    shell: /bin/bash
+    system: yes
+
+# --- Directory structure ---
+- name: Create orchestrator directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(orchestrator_user) }}"
+    group: "{{ item.group | default(orchestrator_group) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ orchestrator_home }}" }
+    - { path: "{{ orchestrator_api_dir }}" }
+    - { path: "{{ orchestrator_apps_dir }}" }
+    - { path: "{{ orchestrator_log_dir }}" }
+    - { path: "{{ orchestrator_home }}/repos" }
+    - { path: "{{ orchestrator_home }}/data" }
+
+# --- tmpfs for ephemeral secrets ---
+- name: Create secrets tmpfs mount point
+  file:
+    path: "{{ orchestrator_secrets_dir }}"
+    state: directory
+    owner: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    mode: "0700"
+
+- name: Mount tmpfs for secrets
+  mount:
+    path: "{{ orchestrator_secrets_dir }}"
+    src: tmpfs
+    fstype: tmpfs
+    opts: "size=10m,mode=0700,uid={{ orchestrator_user }},gid={{ orchestrator_group }}"
+    state: mounted
+
+# --- Install Terraform ---
+- name: Add HashiCorp GPG key
+  apt_key:
+    url: https://apt.releases.hashicorp.com/gpg
+    state: present
+
+- name: Add HashiCorp repository
+  apt_repository:
+    repo: "deb https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    state: present
+
+- name: Install Terraform
+  apt:
+    name: "terraform={{ terraform_version }}-*"
+    state: present
+    update_cache: yes
+
+# --- Install Ansible in virtualenv ---
+- name: Install Python venv and pip dependencies
+  apt:
+    name:
+      - python3-venv
+      - python3-pip
+      - python3-dev
+      - sshpass
+    state: present
+
+- name: Create Ansible virtualenv
+  command: python3 -m venv {{ orchestrator_venv }}
+  args:
+    creates: "{{ orchestrator_venv }}/bin/activate"
+  become_user: "{{ orchestrator_user }}"
+
+- name: Install Ansible and tools in virtualenv
+  pip:
+    name:
+      - ansible-core
+      - hvac
+      - boto3
+      - pyyaml
+    virtualenv: "{{ orchestrator_venv }}"
+  become_user: "{{ orchestrator_user }}"
+
+# --- Install system tools ---
+- name: Install system dependencies
+  apt:
+    name:
+      - jq
+      - git
+      - rsync
+      - libsqlite3-dev
+      - build-essential
+    state: present
+
+# --- Install MinIO client ---
+- name: Download MinIO client
+  get_url:
+    url: https://dl.min.io/client/mc/release/linux-amd64/mc
+    dest: /usr/local/bin/mc
+    mode: "0755"
+
+# --- Install PM2 ---
+- name: Install PM2 globally
+  npm:
+    name: pm2
+    global: yes
+    state: present
+
+# --- Deploy API code ---
+- name: Sync orchestrator API code to server
+  synchronize:
+    src: "{{ playbook_dir }}/../../orchestrator/api/"
+    dest: "{{ orchestrator_api_dir }}/"
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=*.db"
+      - "--exclude=.env"
+    delete: yes
+  notify: restart orchestrator
+
+- name: Install API npm dependencies
+  command: npm ci --production
+  args:
+    chdir: "{{ orchestrator_api_dir }}"
+  become_user: "{{ orchestrator_user }}"
+  environment:
+    HOME: "{{ orchestrator_home }}"
+
+- name: Sync Ansible directory to orchestrator
+  synchronize:
+    src: "{{ playbook_dir }}/../../ansible/"
+    dest: "{{ orchestrator_home }}/ansible/"
+    rsync_opts:
+      - "--exclude=.git"
+    delete: yes
+
+- name: Deploy app manifests
+  synchronize:
+    src: "{{ playbook_dir }}/../../orchestrator/apps/"
+    dest: "{{ orchestrator_apps_dir }}/"
+    delete: no
+
+- name: Set ownership on API directory
+  file:
+    path: "{{ orchestrator_api_dir }}"
+    state: directory
+    owner: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    recurse: yes
+
+# --- SSH key for deploy access ---
+- name: Create .ssh directory
+  file:
+    path: "{{ orchestrator_home }}/.ssh"
+    state: directory
+    owner: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    mode: "0700"
+
+- name: Deploy SSH key for environment access
+  copy:
+    content: "{{ orchestrator_deploy_key }}"
+    dest: "{{ orchestrator_home }}/.ssh/deploy_key"
+    owner: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    mode: "0600"
+  when: orchestrator_deploy_key is defined
+  no_log: true
+
+- name: Deploy SSH config
+  copy:
+    content: |
+      Host *
+        IdentityFile {{ orchestrator_home }}/.ssh/deploy_key
+        StrictHostKeyChecking accept-new
+        UserKnownHostsFile {{ orchestrator_home }}/.ssh/known_hosts
+        User deploy
+    dest: "{{ orchestrator_home }}/.ssh/config"
+    owner: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    mode: "0600"
+
+# --- API environment file ---
+- name: Deploy API environment file
+  template:
+    src: api.env.j2
+    dest: "{{ orchestrator_home }}/api.env"
+    owner: "{{ orchestrator_user }}"
+    group: "{{ orchestrator_group }}"
+    mode: "0600"
+  notify: restart orchestrator
+
+# --- Deploy systemd service ---
+- name: Deploy orchestrator systemd unit
+  template:
+    src: orchestrator.service.j2
+    dest: "/etc/systemd/system/{{ orchestrator_service_name }}.service"
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart orchestrator
+
+- name: Enable orchestrator service
+  service:
+    name: "{{ orchestrator_service_name }}"
+    enabled: yes
+
+# --- UFW rules ---
+- name: Allow orchestrator API port from management network
+  ufw:
+    rule: allow
+    port: "{{ orchestrator_port }}"
+    proto: tcp
+    from_ip: "10.0.5.0/24"
+
+# --- Multi-NIC environment VLAN access ---
+- name: Deploy netplan config for environment VLAN NICs
+  template:
+    src: netplan-env-nics.yml.j2
+    dest: /etc/netplan/60-orchestrator-env-vlans.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  when: orchestrator_env_nics is defined and orchestrator_env_nics | length > 0
+  notify: apply netplan
+
+- name: Flush handler to apply netplan immediately
+  meta: flush_handlers

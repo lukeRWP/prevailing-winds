@@ -1,0 +1,55 @@
+---
+# Deploy IMP client application
+# Usage: ansible-playbook playbooks/deploy-client.yml -i inventories/dev/hosts.yml --become -e tarball=/path/to/imp-client.tar.gz
+- name: Deploy IMP Client
+  hosts: imp_clients
+  become: yes
+  vars:
+    app_client_web_root: /var/www/imp-client
+    deploy_user: deploy
+
+  tasks:
+    - name: Verify tarball variable is set
+      assert:
+        that: tarball is defined
+        fail_msg: "Pass -e tarball=/path/to/imp-client.tar.gz"
+
+    - name: Ensure web root exists
+      file:
+        path: "{{ app_client_web_root }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Clear old client files
+      shell: rm -rf {{ app_client_web_root }}/*
+      args:
+        executable: /bin/bash
+
+    - name: Upload and extract client tarball
+      unarchive:
+        src: "{{ tarball }}"
+        dest: "{{ app_client_web_root }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: Verify client is serving
+      uri:
+        url: "https://127.0.0.1:443/"
+        status_code: 200
+        validate_certs: no
+        return_content: no
+      register: client_check
+      retries: 5
+      delay: 2
+      until: client_check.status == 200
+
+    - name: Show deploy result
+      debug:
+        msg: "Client deployed to {{ app_client_web_root }} — nginx health {{ 'OK' if client_check.status == 200 else 'PENDING' }}"

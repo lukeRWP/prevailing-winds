@@ -1,0 +1,115 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "CPU Usage by VM",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "max": 100, "min": 0 }
+      }
+    },
+    {
+      "title": "Memory Usage by VM",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "max": 100, "min": 0 }
+      }
+    },
+    {
+      "title": "Disk Usage by VM",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 85, "color": "orange" },
+              { "value": 95, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Network Traffic",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "irate(node_network_receive_bytes_total{device!~\"lo|veth.*\"}[5m]) * 8",
+          "legendFormat": "{{ instance }} rx"
+        },
+        {
+          "expr": "irate(node_network_transmit_bytes_total{device!~\"lo|veth.*\"}[5m]) * 8",
+          "legendFormat": "{{ instance }} tx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bps" }
+      }
+    },
+    {
+      "title": "System Load (1m avg)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "node_load1",
+          "legendFormat": "{{ instance }}"
+        }
+      ]
+    },
+    {
+      "title": "VM Uptime",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "(time() - node_boot_time_seconds) / 86400",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "d", "decimals": 1 }
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["imp", "infrastructure"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "IMP Infrastructure Overview",
+  "uid": "imp-node-overview"
+}

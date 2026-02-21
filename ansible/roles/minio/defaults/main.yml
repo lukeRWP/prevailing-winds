@@ -1,0 +1,11 @@
+---
+minio_version: "latest"
+minio_user: minio-user
+minio_group: minio-user
+minio_data_dir: /opt/minio/data
+minio_config_dir: /etc/minio
+minio_port: 9000
+minio_console_port: 9001
+minio_bucket: "imp-files"
+minio_access_key: ""
+minio_secret_key: ""

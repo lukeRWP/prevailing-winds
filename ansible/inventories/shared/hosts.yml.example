@@ -1,0 +1,16 @@
+# Copy to hosts.yml — this file is gitignored
+---
+all:
+  vars:
+    env_name: shared
+    ansible_user: deploy
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new'
+  children:
+    imp_vault:
+      hosts:
+        imp-vault:
+          ansible_host: 10.0.x.x
+    imp_runner:
+      hosts:
+        imp-runner:
+          ansible_host: 10.0.x.x

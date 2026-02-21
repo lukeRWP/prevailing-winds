@@ -1,0 +1,31 @@
+# Scoped sudoers for the deploy user ({{ deploy_user }})
+# Managed by Ansible — do not edit manually.
+#
+# This file replaces the broad NOPASSWD:ALL that is used during
+# Ansible provisioning.  It limits the deploy user to only the
+# commands required for day-to-day deployment and service management.
+
+# Service management
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/sbin/service
+
+# Container management
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker-compose
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/docker compose *
+
+# File operations needed for deployments
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/cp
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/mkdir
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/chown
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/chmod
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/ln
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/rm
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/tar
+
+# Nginx reload for client deploys
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/sbin/nginx
+
+# NPM for server deploys
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/npm
+{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/local/bin/npm

@@ -1,0 +1,11 @@
+[Unit]
+Description=IMP Database Backup Failure Notification (%i)
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+
+# Log the failure prominently so monitoring tools (Prometheus journal exporter, etc.) pick it up.
+# Replace the echo with a real alerting mechanism (curl to Slack/PagerDuty webhook) when ready.
+ExecStart=/bin/bash -c 'echo "ALERT: IMP database backup failed for unit %i on $(hostname) at $(date --iso-8601=seconds)" | systemd-cat -t imp-db-backup -p err'

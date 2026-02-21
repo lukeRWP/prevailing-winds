@@ -1,0 +1,177 @@
+---
+- name: Install runner dependencies
+  apt:
+    name:
+      - build-essential
+      - libssl-dev
+      - libffi-dev
+      - python3
+      - python3-pip
+      - docker.io
+    state: present
+
+- name: Ensure Docker is started
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Create runner group
+  group:
+    name: "{{ runner_group }}"
+    system: yes
+
+- name: Create runner user
+  user:
+    name: "{{ runner_user }}"
+    group: "{{ runner_group }}"
+    home: "{{ runner_home }}"
+    shell: /bin/bash
+    groups:
+      - docker
+      - sudo
+    append: yes
+
+- name: Grant runner passwordless sudo (broad — required for provisioning)
+  copy:
+    content: "{{ runner_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    dest: "/etc/sudoers.d/{{ runner_user }}"
+    mode: "0440"
+    validate: "visudo -cf %s"
+  tags:
+    - provision
+
+- name: Create runner directory
+  file:
+    path: "{{ runner_home }}"
+    state: directory
+    owner: "{{ runner_user }}"
+    group: "{{ runner_group }}"
+    mode: "0755"
+
+- name: Download GitHub Actions runner
+  get_url:
+    url: "https://github.com/actions/runner/releases/download/v{{ runner_version }}/actions-runner-linux-x64-{{ runner_version }}.tar.gz"
+    dest: "/tmp/actions-runner-{{ runner_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract runner
+  unarchive:
+    src: "/tmp/actions-runner-{{ runner_version }}.tar.gz"
+    dest: "{{ runner_home }}"
+    remote_src: yes
+    owner: "{{ runner_user }}"
+    group: "{{ runner_group }}"
+    creates: "{{ runner_home }}/config.sh"
+
+- name: Check if runner is configured
+  stat:
+    path: "{{ runner_home }}/.runner"
+  register: runner_configured
+
+- name: Configure runner (initial registration)
+  become_user: "{{ runner_user }}"
+  command: >
+    ./config.sh
+    --url {{ github_repo_url }}
+    --token {{ github_runner_token }}
+    --name {{ runner_name }}
+    --labels {{ runner_labels }}
+    --work {{ runner_work_dir }}
+    --unattended
+    --replace
+    {{ '--ephemeral' if runner_ephemeral | default(true) else '' }}
+  args:
+    chdir: "{{ runner_home }}"
+  when: not runner_configured.stat.exists and github_runner_token != ""
+  no_log: true
+
+# --- Ephemeral runner support ---
+
+- name: Store runner registration token securely
+  copy:
+    content: "{{ github_runner_token }}"
+    dest: "{{ runner_home }}/.registration-token"
+    owner: "{{ runner_user }}"
+    group: "{{ runner_group }}"
+    mode: "0600"
+  when: runner_ephemeral | default(true) and github_runner_token != ""
+  no_log: true
+
+- name: Deploy ephemeral re-configuration script
+  template:
+    src: ephemeral-configure.sh.j2
+    dest: "{{ runner_home }}/ephemeral-configure.sh"
+    owner: "{{ runner_user }}"
+    group: "{{ runner_group }}"
+    mode: "0755"
+  when: runner_ephemeral | default(true)
+  notify:
+    - restart github-runner
+
+- name: Deploy pre-job cleanup script
+  copy:
+    src: cleanup.sh
+    dest: "{{ runner_cleanup_script }}"
+    owner: "{{ runner_user }}"
+    group: "{{ runner_group }}"
+    mode: "0755"
+  notify:
+    - restart github-runner
+
+# --- Service deployment ---
+
+- name: Deploy runner systemd unit
+  template:
+    src: github-runner.service.j2
+    dest: /etc/systemd/system/github-runner.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart github-runner
+
+- name: Enable and start runner service
+  service:
+    name: github-runner
+    state: started
+    enabled: yes
+  when: runner_configured.stat.exists or github_runner_token != ""
+
+- name: Install Node.js 22 for runner
+  block:
+    - name: Add NodeSource GPG key
+      apt_key:
+        url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+        state: present
+
+    - name: Add NodeSource repository
+      apt_repository:
+        repo: "deb https://deb.nodesource.com/node_22.x nodistro main"
+        state: present
+
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        state: present
+        update_cache: yes
+
+- name: Install Ansible for CI deployments
+  apt:
+    name: ansible
+    state: present
+
+- name: Install CI build dependencies
+  apt:
+    name:
+      - libcairo2-dev
+      - libpango1.0-dev
+      - libjpeg-dev
+      - libgif-dev
+      - librsvg2-dev
+      - poppler-utils
+    state: present
+
+# --- Multi-NIC environment VLAN access ---
+- name: Include environment VLAN network configuration
+  include_tasks: network.yml
+  when: runner_env_nics is defined and runner_env_nics | length > 0

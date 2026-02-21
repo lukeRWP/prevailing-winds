@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Secrets — NEVER commit these
+terraform.tfvars
+*.auto.tfvars
+
+# Environment-specific vars are tracked (non-secret)
+# !environments/*.tfvars

@@ -1,0 +1,55 @@
+---
+- name: Backup before migration
+  command: >
+    mysqldump -u root -p{{ mysql_root_password }}
+    --all-databases
+    --result-file={{ mysql_backup_dir }}/pre-migrate-{{ ansible_date_time.iso8601_basic_short }}.sql
+  no_log: true
+
+- name: Copy migration files
+  copy:
+    src: "{{ playbook_dir }}/../../../SQL/migrations/"
+    dest: /tmp/imp-migrations/
+    mode: "0644"
+  when: migration_file == ""
+
+- name: Copy specific migration file
+  copy:
+    src: "{{ migration_file }}"
+    dest: /tmp/imp-migration.sql
+    mode: "0644"
+  when: migration_file != ""
+
+- name: Run specific migration
+  mysql_db:
+    name: IMP_ADMIN
+    state: import
+    target: /tmp/imp-migration.sql
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: migration_file != ""
+
+- name: Find pending migrations
+  find:
+    paths: /tmp/imp-migrations
+    patterns: "*.sql"
+  register: migration_files
+  when: migration_file == ""
+
+- name: Run all migrations in order
+  mysql_db:
+    name: IMP_ADMIN
+    state: import
+    target: "{{ item.path }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ migration_files.files | sort(attribute='path') }}"
+  when: migration_file == "" and migration_files.files is defined
+
+- name: Cleanup temp migration files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/imp-migrations
+    - /tmp/imp-migration.sql

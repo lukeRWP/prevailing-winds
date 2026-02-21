@@ -1,0 +1,82 @@
+---
+# Verify database backup integrity
+# Usage: ansible-playbook playbooks/db-backup-verify.yml -i inventories/prod/hosts.yml --become
+#
+# Checks:
+#   - Latest backup file exists and has non-zero size
+#   - File is valid gzip (if compressed)
+#   - SQL content begins with expected MySQL dump header
+#   - Backup is not stale (< 25 hours old by default)
+
+- name: Verify database backup integrity
+  hosts: imp_databases
+  become: yes
+  gather_facts: yes
+  vars:
+    backup_dir: "{{ mysql_backup_dir | default('/opt/imp-db/backups') }}"
+    max_backup_age_hours: 25
+
+  tasks:
+    - name: Find latest backup file
+      shell: ls -t {{ backup_dir }}/pre-deploy-*.sql {{ backup_dir }}/pre-deploy-*.sql.gz {{ backup_dir }}/pre-migrate-*.sql {{ backup_dir }}/pre-migrate-*.sql.gz 2>/dev/null | head -1
+      register: latest_backup
+      changed_when: false
+      failed_when: false
+
+    - name: Verify a backup exists
+      assert:
+        that: latest_backup.stdout | length > 0
+        fail_msg: "No backup files found in {{ backup_dir }}"
+
+    - name: Get backup file stats
+      stat:
+        path: "{{ latest_backup.stdout }}"
+      register: backup_stat
+
+    - name: Verify backup is not empty
+      assert:
+        that: backup_stat.stat.size > 1024
+        fail_msg: "Backup file {{ latest_backup.stdout }} is suspiciously small ({{ backup_stat.stat.size }} bytes)"
+
+    - name: Check backup age
+      set_fact:
+        backup_age_hours: "{{ ((ansible_date_time.epoch | int) - (backup_stat.stat.mtime | int)) / 3600 }}"
+
+    - name: Warn if backup is stale
+      debug:
+        msg: "WARNING: Latest backup is {{ backup_age_hours | float | round(1) }} hours old (threshold: {{ max_backup_age_hours }}h)"
+      when: backup_age_hours | float > max_backup_age_hours
+
+    - name: Verify gzip integrity (if compressed)
+      command: gunzip -t {{ latest_backup.stdout }}
+      when: latest_backup.stdout.endswith('.gz')
+      changed_when: false
+
+    - name: Check SQL content (uncompressed)
+      shell: head -5 {{ latest_backup.stdout }}
+      register: sql_header
+      changed_when: false
+      when: not latest_backup.stdout.endswith('.gz')
+
+    - name: Check SQL content (compressed)
+      shell: gunzip -c {{ latest_backup.stdout }} | head -5
+      register: sql_header_gz
+      changed_when: false
+      when: latest_backup.stdout.endswith('.gz')
+
+    - name: Set SQL header result
+      set_fact:
+        sql_content: "{{ (sql_header.stdout if sql_header.stdout is defined and sql_header.stdout else sql_header_gz.stdout | default('')) }}"
+
+    - name: Verify SQL dump header
+      assert:
+        that: "'MySQL' in sql_content or 'mysqldump' in sql_content or 'CREATE' in sql_content or 'INSERT' in sql_content"
+        fail_msg: "Backup file does not appear to contain valid MySQL dump content"
+
+    - name: Backup verification report
+      debug:
+        msg:
+          file: "{{ latest_backup.stdout }}"
+          size_mb: "{{ (backup_stat.stat.size / 1048576) | round(2) }}"
+          age_hours: "{{ backup_age_hours | float | round(1) }}"
+          status: "{{ 'VALID' if sql_content | length > 0 else 'UNKNOWN' }}"

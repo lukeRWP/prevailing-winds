@@ -1,0 +1,165 @@
+---
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Update /etc/hosts with hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: "^127\\.0\\.1\\.1"
+    line: "127.0.1.1 {{ inventory_hostname }}"
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Set timezone
+  timezone:
+    name: "{{ ntp_timezone }}"
+
+- name: Enable NTP
+  service:
+    name: systemd-timesyncd
+    state: started
+    enabled: yes
+
+- name: Ensure deploy user exists
+  user:
+    name: "{{ deploy_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    create_home: yes
+
+- name: Add authorized SSH keys for deploy user
+  authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ deploy_authorized_keys }}"
+  when: deploy_authorized_keys | length > 0
+  no_log: true
+
+- name: Allow deploy user passwordless sudo (broad — required for provisioning)
+  copy:
+    content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    dest: "/etc/sudoers.d/{{ deploy_user }}"
+    mode: "0440"
+    validate: "visudo -cf %s"
+  tags:
+    - provision
+
+- name: Configure SSH - disable root login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PermitRootLogin"
+    line: "PermitRootLogin no"
+  notify: restart sshd
+
+- name: Configure SSH - disable password auth
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PasswordAuthentication"
+    line: "PasswordAuthentication no"
+  notify: restart sshd
+
+- name: Configure UFW - allow SSH
+  ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+
+- name: Configure UFW - default deny incoming
+  ufw:
+    direction: incoming
+    policy: deny
+
+- name: Configure UFW - default allow outgoing
+  ufw:
+    direction: outgoing
+    policy: allow
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Configure fail2ban for SSH
+  copy:
+    content: |
+      [sshd]
+      enabled = true
+      port = {{ ssh_port }}
+      filter = sshd
+      maxretry = 5
+      bantime = 3600
+      findtime = 600
+    dest: /etc/fail2ban/jail.d/imp-sshd.conf
+    mode: "0644"
+  notify: restart fail2ban
+
+- name: Enable fail2ban
+  service:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+- name: Deploy sysctl hardening
+  copy:
+    content: |
+      # IMP kernel hardening
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.tcp_syncookies = 1
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      kernel.randomize_va_space = 2
+      fs.suid_dumpable = 0
+    dest: /etc/sysctl.d/99-imp-hardening.conf
+    mode: "0644"
+  notify: apply sysctl
+
+- name: Configure unattended-upgrades for security patches
+  copy:
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: "0644"
+
+- name: Enable unattended-upgrades timer
+  copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+
+- name: Install Vault CLI
+  block:
+    - name: Add HashiCorp GPG key
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+
+    - name: Add HashiCorp apt repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+
+    - name: Install vault CLI
+      apt:
+        name: vault
+        state: present
+        update_cache: yes

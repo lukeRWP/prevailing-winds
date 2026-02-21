@@ -1,0 +1,12 @@
+---
+- name: Run database migrations
+  hosts: imp_databases
+  become: yes
+  vars:
+    migration_file: ""
+
+  tasks:
+    - name: Run migration
+      include_role:
+        name: mysql
+        tasks_from: migrate

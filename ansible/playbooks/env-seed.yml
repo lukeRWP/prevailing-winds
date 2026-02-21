@@ -1,0 +1,182 @@
+---
+# Seed an environment from another environment's data
+# Usage: ansible-playbook playbooks/env-seed.yml \
+#          -i inventories/TARGET/hosts.yml \
+#          --become \
+#          -e source_env=prod \
+#          -e target_env=qa \
+#          -e source_db_host=10.0.120.12 \
+#          -e source_minio_host=10.0.120.13
+#
+# Optional:
+#   -e skip_db=true        Skip database seeding
+#   -e skip_files=true     Skip MinIO file sync
+#   -e skip_sync_config=true  Skip sync config cloning
+#   -e force=true          Allow overwriting non-empty target database
+
+- name: "Seed {{ target_env }} from {{ source_env }}"
+  hosts: imp_databases
+  become: yes
+  gather_facts: yes
+  vars:
+    source_env: ""
+    target_env: ""
+    source_db_host: ""
+    source_minio_host: ""
+    seed_backup_dir: "{{ mysql_backup_dir | default('/opt/imp-db/backups') }}"
+    sanitize_data: true
+
+  tasks:
+    - name: Validate required variables
+      assert:
+        that:
+          - source_env | length > 0
+          - target_env | length > 0
+          - source_db_host | length > 0
+        fail_msg: "Required: -e source_env=X -e target_env=X -e source_db_host=X"
+
+    - name: Verify source != target
+      assert:
+        that: source_env != target_env
+        fail_msg: "Source and target environments must be different"
+
+    # --- Database seeding ---
+    - name: Database seed
+      when: not (skip_db | default(false) | bool)
+      block:
+        - name: Check target database has data
+          command: >
+            mysql --defaults-file=/root/.my.cnf
+            -N -e "SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA LIKE 'IMP_%' AND TABLE_ROWS > 0"
+          register: target_row_count
+          changed_when: false
+
+        - name: Fail if target has data and force is not set
+          fail:
+            msg: >
+              Target database has {{ target_row_count.stdout }} tables with data.
+              Use -e force=true to overwrite.
+          when:
+            - target_row_count.stdout | int > 0
+            - not (force | default(false) | bool)
+
+        - name: Dump source database (via remote connection)
+          shell: >
+            mysqldump
+            -h {{ source_db_host }}
+            -u root -p{{ mysql_root_password }}
+            --all-databases
+            --single-transaction
+            --routines
+            --triggers
+            --result-file={{ seed_backup_dir }}/seed-{{ source_env }}-{{ ansible_date_time.iso8601_basic_short }}.sql
+          no_log: true
+
+        - name: Sanitize dump (remove sensitive data)
+          shell: |
+            DUMP="{{ seed_backup_dir }}/seed-{{ source_env }}-{{ ansible_date_time.iso8601_basic_short }}.sql"
+            # Remove user password hashes
+            sed -i "s/\(PASSWORD_HASH','[^']*\)/PASSWORD_HASH','RESET_REQUIRED'/g" "$DUMP"
+            # Remove API log entries (large, environment-specific)
+            sed -i '/INSERT INTO.*`API_LOGS`/d' "$DUMP"
+            # Remove session tokens
+            sed -i '/INSERT INTO.*`SESSIONS`/d' "$DUMP"
+            # Clear auth tokens
+            sed -i "s/\(AUTH_TOKEN','[^']*\)/AUTH_TOKEN',''/g" "$DUMP"
+          when: sanitize_data | bool
+
+        - name: Restore dump to target database
+          shell: >
+            mysql --defaults-file=/root/.my.cnf
+            < {{ seed_backup_dir }}/seed-{{ source_env }}-{{ ansible_date_time.iso8601_basic_short }}.sql
+          no_log: true
+
+        - name: Clone and rewrite sync config for target environment
+          template:
+            src: "../scripts/clone-sync-config.sql.j2"
+            dest: /tmp/clone-sync-config.sql
+          when: not (skip_sync_config | default(false) | bool)
+
+        - name: Apply sync config changes
+          shell: mysql --defaults-file=/root/.my.cnf < /tmp/clone-sync-config.sql
+          when: not (skip_sync_config | default(false) | bool)
+
+        - name: Clean up temp SQL
+          file:
+            path: /tmp/clone-sync-config.sql
+            state: absent
+
+        - name: Verify seed — check table counts
+          command: >
+            mysql --defaults-file=/root/.my.cnf
+            -N -e "SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA LIKE 'IMP_%' AND TABLE_ROWS > 0"
+          register: post_seed_count
+          changed_when: false
+
+        - name: Report database seed result
+          debug:
+            msg: "Database seeded: {{ post_seed_count.stdout }} tables with data (from {{ source_env }})"
+
+# --- MinIO file sync ---
+- name: "Seed MinIO files: {{ source_env }} → {{ target_env }}"
+  hosts: imp_storage
+  become: yes
+  gather_facts: no
+  vars:
+    source_minio_host: ""
+    minio_bucket: "imp-files"
+  vars_files:
+    - ../roles/minio/defaults/main.yml
+
+  tasks:
+    - name: Skip file sync if requested
+      meta: end_play
+      when: skip_files | default(false) | bool
+
+    - name: Validate source MinIO host
+      assert:
+        that: source_minio_host | length > 0
+        fail_msg: "Required: -e source_minio_host=X"
+
+    - name: Configure mc alias for source
+      command: >
+        mc alias set source
+        https://{{ source_minio_host }}:{{ minio_port }}
+        {{ minio_access_key }}
+        {{ minio_secret_key }}
+        --insecure
+      become_user: "{{ minio_user }}"
+      no_log: true
+
+    - name: Configure mc alias for target (local)
+      command: >
+        mc alias set target
+        https://localhost:{{ minio_port }}
+        {{ minio_access_key }}
+        {{ minio_secret_key }}
+        --insecure
+      become_user: "{{ minio_user }}"
+      no_log: true
+
+    - name: Mirror files from source to target
+      command: >
+        mc mirror --overwrite --insecure
+        source/{{ minio_bucket }}
+        target/{{ minio_bucket }}
+      become_user: "{{ minio_user }}"
+      register: mirror_result
+
+    - name: Verify file counts match
+      shell: |
+        SOURCE_COUNT=$(mc ls --recursive --insecure source/{{ minio_bucket }} 2>/dev/null | wc -l)
+        TARGET_COUNT=$(mc ls --recursive --insecure target/{{ minio_bucket }} 2>/dev/null | wc -l)
+        echo "source=$SOURCE_COUNT target=$TARGET_COUNT"
+      become_user: "{{ minio_user }}"
+      register: file_counts
+      changed_when: false
+
+    - name: Report file sync result
+      debug:
+        msg: "File sync complete: {{ file_counts.stdout }}"

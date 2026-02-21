@@ -1,0 +1,17 @@
+[Unit]
+Description=Prevailing Winds Orchestrator API
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ orchestrator_user }}
+Group={{ orchestrator_group }}
+WorkingDirectory={{ orchestrator_api_dir }}
+EnvironmentFile=-{{ orchestrator_home }}/api.env
+ExecStart=/usr/bin/npx pm2-runtime ecosystem.config.js --env production
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

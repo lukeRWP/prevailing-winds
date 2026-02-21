@@ -1,0 +1,118 @@
+# IMP Application Manifest
+# Defines all environments, VM topology, and pipeline behavior
+# The orchestrator reads this file to discover and manage environments
+
+name: imp
+displayName: "IMP Expansions Management"
+repo: "git@github.com:lukeRWP/Expansions-Management.git"
+infraPath: "infra"
+vaultPrefix: "secret/apps/imp"
+
+# VM template — what services each environment gets
+vmTemplate:
+  roles:
+    client:
+      - common
+      - node-exporter
+      - nodejs
+      - nginx
+      - app-client
+    server:
+      - common
+      - node-exporter
+      - nodejs
+      - app-server
+    database:
+      - common
+      - node-exporter
+      - mysql
+    storage:
+      - common
+      - node-exporter
+      - minio
+  healthChecks:
+    server:
+      path: "/health/live"
+      port: 2727
+    storage:
+      path: "/minio/health/live"
+      port: 9000
+    database:
+      type: tcp
+      port: 3306
+    client:
+      path: "/"
+      port: 443
+      scheme: https
+
+# Environments — dynamically extensible
+# Adding a new env: add a block here, then POST /api/_y_/apps/imp/envs
+environments:
+  dev:
+    vlan: 100
+    cidr: "10.0.100.0/24"
+    gateway: "10.0.100.254"
+    terraformWorkspace: "dev"
+    hosts:
+      client:
+        ip: "10.0.100.10"
+        externalIp: "10.0.3.10"
+        proxmoxNode: "prx002"
+      server:
+        ip: "10.0.100.11"
+        proxmoxNode: "prx002"
+      database:
+        ip: "10.0.100.12"
+        proxmoxNode: "prx002"
+      storage:
+        ip: "10.0.100.13"
+        proxmoxNode: "prx002"
+    pipeline:
+      autoDeployBranch: "master"
+      requiresApproval: false
+
+  qa:
+    vlan: 110
+    cidr: "10.0.110.0/24"
+    gateway: "10.0.110.254"
+    terraformWorkspace: "qa"
+    hosts:
+      client:
+        ip: "10.0.110.10"
+        externalIp: "10.0.3.20"
+        proxmoxNode: "prx002"
+      server:
+        ip: "10.0.110.11"
+        proxmoxNode: "prx002"
+      database:
+        ip: "10.0.110.12"
+        proxmoxNode: "prx002"
+      storage:
+        ip: "10.0.110.13"
+        proxmoxNode: "prx002"
+    pipeline:
+      deployOnTag: "v*"
+      requiresApproval: false
+
+  prod:
+    vlan: 120
+    cidr: "10.0.120.0/24"
+    gateway: "10.0.120.254"
+    terraformWorkspace: "prod"
+    hosts:
+      client:
+        ip: "10.0.120.10"
+        externalIp: "10.0.3.30"
+        proxmoxNode: "prx002"
+      server:
+        ip: "10.0.120.11"
+        proxmoxNode: "prx002"
+      database:
+        ip: "10.0.120.12"
+        proxmoxNode: "prx001"
+      storage:
+        ip: "10.0.120.13"
+        proxmoxNode: "prx002"
+    pipeline:
+      deployOnTag: "v*"
+      requiresApproval: true

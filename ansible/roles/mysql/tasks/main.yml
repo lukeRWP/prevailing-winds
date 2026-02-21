@@ -1,0 +1,248 @@
+---
+- name: Install MySQL {{ mysql_version }}
+  apt:
+    name:
+      - "mysql-server-{{ mysql_version }}"
+      - "mysql-client-{{ mysql_version }}"
+      - python3-mysqldb
+    state: present
+
+- name: Create MySQL directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: "0750"
+  loop:
+    - "{{ mysql_ssl_dir }}"
+    - "{{ mysql_backup_dir }}"
+
+# ---------- SSL Certificate Management ----------
+# If vault has certs (non-empty), deploy them. Otherwise, generate on-host.
+
+- name: Check if vault SSL certs are provided
+  set_fact:
+    mysql_ssl_from_vault: "{{ (vault_mysql_ca_pem | default('') | trim | length > 0) | bool }}"
+
+- name: Deploy SSL certificates from vault
+  copy:
+    content: "{{ item.content }}"
+    dest: "{{ mysql_ssl_dir }}/{{ item.name }}"
+    owner: mysql
+    group: mysql
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: "ca.pem", content: "{{ vault_mysql_ca_pem }}", mode: "0640" }
+    - { name: "server-cert.pem", content: "{{ vault_mysql_server_cert }}", mode: "0640" }
+    - { name: "server-key.pem", content: "{{ vault_mysql_server_key }}", mode: "0600" }
+    - { name: "client-cert.pem", content: "{{ vault_mysql_client_cert }}", mode: "0640" }
+    - { name: "client-key.pem", content: "{{ vault_mysql_client_key }}", mode: "0600" }
+  when: mysql_ssl_from_vault
+  notify: restart mysql
+  no_log: true
+
+# --- Generate SSL certs on-host when vault is empty ---
+- name: Check if SSL certs already exist on host
+  stat:
+    path: "{{ mysql_ssl_dir }}/ca.pem"
+  register: mysql_ssl_ca_stat
+
+- name: Generate SSL certificates
+  when: not mysql_ssl_from_vault and not mysql_ssl_ca_stat.stat.exists
+  block:
+    - name: Generate CA private key
+      command: openssl genrsa -out {{ mysql_ssl_dir }}/ca-key.pem 2048
+      args:
+        creates: "{{ mysql_ssl_dir }}/ca-key.pem"
+
+    - name: Generate CA certificate
+      command: >
+        openssl req -new -x509 -nodes
+        -key {{ mysql_ssl_dir }}/ca-key.pem
+        -out {{ mysql_ssl_dir }}/ca.pem
+        -days 365
+        -subj "/CN=IMP-MySQL-CA/O=IMP/C=US"
+
+    - name: Generate server private key
+      command: openssl genrsa -out {{ mysql_ssl_dir }}/server-key.pem 2048
+
+    - name: Generate server CSR
+      command: >
+        openssl req -new
+        -key {{ mysql_ssl_dir }}/server-key.pem
+        -out {{ mysql_ssl_dir }}/server-req.pem
+        -subj "/CN={{ ansible_host }}/O=IMP/C=US"
+
+    - name: Sign server certificate
+      command: >
+        openssl x509 -req
+        -in {{ mysql_ssl_dir }}/server-req.pem
+        -CA {{ mysql_ssl_dir }}/ca.pem
+        -CAkey {{ mysql_ssl_dir }}/ca-key.pem
+        -CAcreateserial
+        -out {{ mysql_ssl_dir }}/server-cert.pem
+        -days 365
+
+    - name: Generate client private key
+      command: openssl genrsa -out {{ mysql_ssl_dir }}/client-key.pem 2048
+
+    - name: Generate client CSR
+      command: >
+        openssl req -new
+        -key {{ mysql_ssl_dir }}/client-key.pem
+        -out {{ mysql_ssl_dir }}/client-req.pem
+        -subj "/CN=imp-client/O=IMP/C=US"
+
+    - name: Sign client certificate
+      command: >
+        openssl x509 -req
+        -in {{ mysql_ssl_dir }}/client-req.pem
+        -CA {{ mysql_ssl_dir }}/ca.pem
+        -CAkey {{ mysql_ssl_dir }}/ca-key.pem
+        -CAcreateserial
+        -out {{ mysql_ssl_dir }}/client-cert.pem
+        -days 365
+
+    - name: Clean up CSR files
+      file:
+        path: "{{ mysql_ssl_dir }}/{{ item }}"
+        state: absent
+      loop:
+        - server-req.pem
+        - client-req.pem
+
+  notify: restart mysql
+
+- name: Set SSL cert ownership and permissions
+  file:
+    path: "{{ mysql_ssl_dir }}/{{ item.name }}"
+    owner: mysql
+    group: mysql
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: "ca.pem", mode: "0640" }
+    - { name: "server-cert.pem", mode: "0640" }
+    - { name: "server-key.pem", mode: "0600" }
+    - { name: "client-cert.pem", mode: "0644" }
+    - { name: "client-key.pem", mode: "0640" }
+  when: not mysql_ssl_from_vault
+
+# --- Fetch client certs to controller for app-server distribution ---
+- name: Fetch MySQL client SSL certificates to controller
+  fetch:
+    src: "{{ mysql_ssl_dir }}/{{ item }}"
+    dest: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ inventory_hostname }}/"
+    flat: yes
+  loop:
+    - ca.pem
+    - client-cert.pem
+    - client-key.pem
+  when: mysql_require_ssl | default(true) | bool
+
+- name: Disable default bind-address (we set it in imp.cnf)
+  lineinfile:
+    path: /etc/mysql/mysql.conf.d/mysqld.cnf
+    regexp: '^bind-address'
+    line: '# bind-address = 127.0.0.1  # Overridden in imp.cnf'
+  notify: restart mysql
+
+- name: Deploy MySQL configuration
+  template:
+    src: imp-mysql.cnf.j2
+    dest: "{{ mysql_config_dir }}/imp.cnf"
+    owner: mysql
+    group: mysql
+    mode: "0644"
+  notify: restart mysql
+
+- name: Allow MySQL port through UFW
+  ufw:
+    rule: allow
+    port: "{{ mysql_port }}"
+    proto: tcp
+    from_ip: "{{ app_server_ip | default(internal_cidr) }}"
+
+- name: Allow MySQL port from management network (runner/vault access)
+  ufw:
+    rule: allow
+    port: "{{ mysql_port }}"
+    proto: tcp
+    from_ip: "{{ management_cidr }}"
+  when: management_cidr is defined and management_cidr != internal_cidr
+
+- name: Start and enable MySQL
+  service:
+    name: mysql
+    state: started
+    enabled: yes
+
+- name: Check if root password is already set
+  command: mysql -u root -e "SELECT 1"
+  register: mysql_root_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Set MySQL root password (first time)
+  mysql_user:
+    name: root
+    host: localhost
+    password: "{{ mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: mysql_root_password != "" and mysql_root_check.rc == 0
+  no_log: true
+
+- name: Deploy root .my.cnf
+  template:
+    src: root-my.cnf.j2
+    dest: /root/.my.cnf
+    owner: root
+    group: root
+    mode: "0600"
+  when: mysql_root_password != ""
+  no_log: true
+
+- name: Create application databases
+  mysql_db:
+    name: "{{ item }}"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ mysql_databases }}"
+  when: mysql_init_databases | bool
+
+- name: Create application user
+  mysql_user:
+    name: "{{ mysql_app_user }}"
+    password: "{{ mysql_app_password }}"
+    host: "{{ app_server_ip | default('%') }}"
+    plugin: caching_sha2_password
+    priv: "{{ mysql_databases | map('regex_replace', '^(.*)$', '\\1.*:SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES') | join('/') }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    state: present
+  when: mysql_init_databases | bool and mysql_app_password != ""
+  no_log: true
+
+- name: Create SSL user
+  mysql_user:
+    name: "{{ mysql_ssl_user }}"
+    password: "{{ mysql_ssl_password }}"
+    host: "{{ app_server_ip | default('%') }}"
+    plugin: caching_sha2_password
+    priv: "{{ mysql_databases | map('regex_replace', '^(.*)$', '\\1.*:SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES') | join('/') }}"
+    tls_requires:
+      ssl:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    state: present
+  when: mysql_init_databases | bool and mysql_ssl_password != ""
+  no_log: true
+
+- name: Run init SQL files
+  include_tasks: init-sql.yml
+  when: mysql_init_databases | bool

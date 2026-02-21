@@ -1,0 +1,16 @@
+[Unit]
+Description=IMP Database Backup - Daily 2AM Schedule
+Documentation=https://github.com/your-org/Expansions-Management
+
+[Timer]
+# Run every day at 02:00 local time
+OnCalendar=*-*-* 02:00:00
+# If the system was off at 2AM, run the backup on next boot
+Persistent=true
+# Add up to 15 minutes of random delay to avoid thundering herd on multi-host setups
+RandomizedDelaySec=900
+# Accuracy window -- keep tight for backup predictability
+AccuracySec=60
+
+[Install]
+WantedBy=timers.target

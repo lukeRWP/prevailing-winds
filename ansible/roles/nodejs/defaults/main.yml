@@ -1,0 +1,13 @@
+---
+nodejs_version: "22"
+pm2_version: "5.4.3"
+native_build_packages:
+  - build-essential
+  - python3
+  - libcairo2-dev
+  - libpango1.0-dev
+  - libjpeg-dev
+  - libgif-dev
+  - librsvg2-dev
+  - poppler-utils
+  - pkg-config

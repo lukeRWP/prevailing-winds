@@ -1,0 +1,16 @@
+---
+prometheus_version: "2.48.1"
+prometheus_retention: "30d"
+monitoring_network: "10.0.5.0/24"
+
+# Scrape targets — populated by Terraform inventory
+# Override per environment in group_vars
+imp_monitoring_targets:
+  node:
+    - "imp-client-{{ environment_name }}:9100"
+    - "imp-server-{{ environment_name }}:9100"
+    - "imp-db-{{ environment_name }}:9100"
+    - "imp-minio-{{ environment_name }}:9100"
+    - "imp-monitoring-{{ environment_name }}:9100"
+  app:
+    - "imp-server-{{ environment_name }}:2727"

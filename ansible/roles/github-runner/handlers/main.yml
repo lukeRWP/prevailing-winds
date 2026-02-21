@@ -1,0 +1,12 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart github-runner
+  service:
+    name: github-runner
+    state: restarted
+
+- name: apply netplan
+  command: netplan apply

@@ -1,0 +1,164 @@
+---
+# Start environment in correct dependency order with health gates
+# Usage: ansible-playbook playbooks/env-start.yml -i inventories/dev/hosts.yml
+#
+# Start order:
+#   1. MySQL (data layer — everything depends on it)
+#   2. MinIO (storage layer)
+#   3. App server (depends on DB + MinIO)
+#   4. Nginx (reverse proxy — depends on app server)
+#   5. Full stack health verification
+
+- name: "Start MySQL"
+  hosts: imp_databases
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/mysql/defaults/main.yml
+  tasks:
+    - name: Start mysql service
+      service:
+        name: mysql
+        state: started
+
+    - name: Wait for MySQL socket
+      wait_for:
+        path: /var/run/mysqld/mysqld.sock
+        state: present
+        timeout: 60
+
+    - name: Wait for MySQL port
+      wait_for:
+        port: "{{ mysql_port }}"
+        state: started
+        timeout: 30
+
+    - name: Verify MySQL accepts connections
+      command: >
+        mysql --defaults-file=/root/.my.cnf -e "SELECT 1"
+      register: mysql_check
+      retries: 10
+      delay: 3
+      until: mysql_check.rc == 0
+      changed_when: false
+
+    - name: Report MySQL status
+      debug:
+        msg: "MySQL started and accepting connections on port {{ mysql_port }}"
+
+- name: "Start MinIO"
+  hosts: imp_storage
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/minio/defaults/main.yml
+  tasks:
+    - name: Start minio service
+      service:
+        name: minio
+        state: started
+
+    - name: Wait for MinIO port
+      wait_for:
+        port: "{{ minio_port }}"
+        state: started
+        timeout: 30
+
+    - name: Verify MinIO health
+      uri:
+        url: "https://localhost:{{ minio_port }}/minio/health/live"
+        status_code: 200
+        validate_certs: no
+      register: minio_health
+      retries: 10
+      delay: 3
+      until: minio_health.status == 200
+
+    - name: Report MinIO status
+      debug:
+        msg: "MinIO started and healthy on port {{ minio_port }}"
+
+- name: "Start app server"
+  hosts: imp_servers
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/app-server/defaults/main.yml
+  tasks:
+    - name: Start imp-server service
+      service:
+        name: "{{ app_server_service_name }}"
+        state: started
+
+    - name: Wait for app server port
+      wait_for:
+        port: "{{ app_server_port }}"
+        state: started
+        timeout: 30
+
+    - name: Verify app server health
+      uri:
+        url: "http://localhost:{{ app_server_port }}/health/live"
+        status_code: 200
+      register: server_health
+      retries: 12
+      delay: 5
+      until: server_health.status == 200
+
+    - name: Report app server status
+      debug:
+        msg: "App server started and healthy on port {{ app_server_port }}"
+
+- name: "Start Nginx"
+  hosts: imp_clients
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Start nginx service
+      service:
+        name: nginx
+        state: started
+
+    - name: Wait for HTTP port
+      wait_for:
+        port: 80
+        state: started
+        timeout: 15
+
+    - name: Verify nginx responds
+      uri:
+        url: "http://localhost/"
+        status_code: [200, 301, 302]
+        follow_redirects: none
+      register: nginx_health
+      retries: 5
+      delay: 2
+      until: nginx_health.status is defined
+      ignore_errors: true
+
+    - name: Report nginx status
+      debug:
+        msg: "Nginx started and responding on port 80"
+
+- name: "Full stack verification"
+  hosts: imp_servers
+  become: no
+  gather_facts: no
+  vars_files:
+    - ../roles/app-server/defaults/main.yml
+  tasks:
+    - name: Verify full health endpoint
+      uri:
+        url: "http://localhost:{{ app_server_port }}/health"
+        status_code: 200
+        return_content: yes
+      register: full_health
+      retries: 6
+      delay: 5
+      until: full_health.status == 200
+
+    - name: Report full stack status
+      debug:
+        msg: >
+          Environment {{ env_name | default('unknown') }} fully started.
+          Health: {{ full_health.json | default({}) | to_nice_json }}

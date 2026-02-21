@@ -1,0 +1,29 @@
+[Unit]
+Description=IMP Server (Node.js)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User={{ deploy_user }}
+Group={{ deploy_user }}
+WorkingDirectory={{ app_server_current_link }}
+Environment=NODE_ENV={{ app_server_node_env | default('production') }}
+Environment=HOME=/home/{{ deploy_user }}
+Environment=NODE_EXTRA_CA_CERTS={{ app_server_shared_dir }}/minio-ca.crt
+EnvironmentFile={{ app_server_shared_dir }}/.env
+ExecStart=/usr/bin/pm2 start index.js --name imp-server -i max
+ExecReload=/usr/bin/pm2 reload imp-server
+ExecStop=/usr/bin/pm2 stop imp-server
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/{{ deploy_user }}/.pm2
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+---
+runner_version: "2.311.0"
+runner_user: runner
+runner_group: runner
+runner_home: /opt/actions-runner
+runner_work_dir: /opt/actions-runner/_work
+runner_labels: "self-hosted,linux,x64,imp"
+runner_name: "imp-runner-{{ imp_environment | default('shared') }}"
+runner_ephemeral: false
+runner_cleanup_script: "{{ runner_home }}/cleanup.sh"
+github_repo_url: ""
+github_runner_token: ""

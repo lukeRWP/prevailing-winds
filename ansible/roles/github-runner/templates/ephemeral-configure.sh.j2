@@ -1,0 +1,36 @@
+#!/bin/bash
+# ------------------------------------------------------------------
+# Ephemeral runner re-configuration script
+# Called by systemd ExecStartPre before each run.sh invocation.
+# Reads the registration token from a root-owned credential file
+# and re-registers the runner in --ephemeral mode.
+# ------------------------------------------------------------------
+
+set -euo pipefail
+
+RUNNER_HOME="{{ runner_home }}"
+TOKEN_FILE="{{ runner_home }}/.registration-token"
+
+if [ ! -f "$TOKEN_FILE" ]; then
+  echo "[ephemeral-configure] ERROR: Token file $TOKEN_FILE not found." >&2
+  exit 1
+fi
+
+RUNNER_TOKEN=$(cat "$TOKEN_FILE")
+
+# Remove stale runner config from the previous run
+rm -f "$RUNNER_HOME/.runner" 2>/dev/null || true
+
+cd "$RUNNER_HOME"
+
+./config.sh \
+  --url "{{ github_repo_url }}" \
+  --token "$RUNNER_TOKEN" \
+  --name "{{ runner_name }}" \
+  --labels "{{ runner_labels }}" \
+  --work "{{ runner_work_dir }}" \
+  --unattended \
+  --replace \
+  --ephemeral
+
+echo "[ephemeral-configure] Runner registered in ephemeral mode."

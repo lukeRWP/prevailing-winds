@@ -1,0 +1,21 @@
+{
+  "name": "orchestrator-api",
+  "version": "1.0.0",
+  "description": "IMP Orchestrator API — manages infrastructure operations across apps and environments",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "author": "Luke Turner",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "helmet": "^8.1.0",
+    "js-yaml": "^4.1.0",
+    "node-vault": "^0.10.2",
+    "uuid": "^9.0.1"
+  }
+}

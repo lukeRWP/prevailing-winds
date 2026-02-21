@@ -1,0 +1,155 @@
+---
+- name: Create minio group
+  group:
+    name: "{{ minio_group }}"
+    system: yes
+
+- name: Create minio user
+  user:
+    name: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    system: yes
+    home: "{{ minio_data_dir }}"
+    shell: /bin/false
+    create_home: no
+
+- name: Create MinIO directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    mode: "0750"
+  loop:
+    - "{{ minio_data_dir }}"
+    - "{{ minio_config_dir }}"
+
+- name: Download MinIO server binary
+  get_url:
+    url: "https://dl.min.io/server/minio/release/linux-amd64/minio"
+    dest: /usr/local/bin/minio
+    mode: "0755"
+
+- name: Download MinIO client (mc)
+  get_url:
+    url: "https://dl.min.io/client/mc/release/linux-amd64/mc"
+    dest: /usr/local/bin/mc
+    mode: "0755"
+
+- name: Create MinIO TLS certs directory
+  file:
+    path: "{{ minio_config_dir }}/certs"
+    state: directory
+    owner: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    mode: "0750"
+
+- name: Generate MinIO TLS certificate
+  command: >
+    openssl req -x509 -nodes -days 365
+    -newkey ec -pkeyopt ec_paramgen_curve:P-256
+    -keyout {{ minio_config_dir }}/certs/private.key
+    -out {{ minio_config_dir }}/certs/public.crt
+    -subj "/CN={{ inventory_hostname }}"
+    -addext "subjectAltName=DNS:{{ inventory_hostname }},DNS:localhost,IP:{{ ansible_host }},IP:127.0.0.1"
+  args:
+    creates: "{{ minio_config_dir }}/certs/public.crt"
+  notify: restart minio
+
+- name: Set MinIO TLS file ownership
+  file:
+    path: "{{ item }}"
+    owner: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    mode: "0640"
+  loop:
+    - "{{ minio_config_dir }}/certs/private.key"
+    - "{{ minio_config_dir }}/certs/public.crt"
+
+- name: Deploy MinIO environment file
+  template:
+    src: minio.env.j2
+    dest: "{{ minio_config_dir }}/minio.env"
+    owner: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    mode: "0640"
+  notify: restart minio
+  no_log: true
+
+- name: Deploy MinIO systemd unit
+  template:
+    src: minio.service.j2
+    dest: /etc/systemd/system/minio.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart minio
+
+- name: Allow MinIO API port through UFW
+  ufw:
+    rule: allow
+    port: "{{ minio_port }}"
+    proto: tcp
+    from_ip: "{{ app_server_ip | default(internal_cidr) }}"
+
+- name: Allow MinIO console port through UFW
+  ufw:
+    rule: allow
+    port: "{{ minio_console_port }}"
+    proto: tcp
+    from_ip: "{{ management_ip | default(internal_cidr) }}"
+
+- name: Allow MinIO API port from management network (runner access)
+  ufw:
+    rule: allow
+    port: "{{ minio_port }}"
+    proto: tcp
+    from_ip: "{{ management_cidr }}"
+  when: management_cidr is defined and management_cidr != internal_cidr
+
+- name: Allow MinIO console port from management network
+  ufw:
+    rule: allow
+    port: "{{ minio_console_port }}"
+    proto: tcp
+    from_ip: "{{ management_cidr }}"
+  when: management_cidr is defined and management_cidr != internal_cidr
+
+- name: Start and enable MinIO
+  service:
+    name: minio
+    state: started
+    enabled: yes
+
+- name: Wait for MinIO to be ready
+  uri:
+    url: "https://localhost:{{ minio_port }}/minio/health/live"
+    status_code: 200
+    validate_certs: no
+  register: minio_health
+  retries: 10
+  delay: 3
+  until: minio_health.status == 200
+
+- name: Configure mc alias
+  command: >
+    mc alias set local
+    https://localhost:{{ minio_port }}
+    {{ minio_access_key }}
+    {{ minio_secret_key }}
+    --insecure
+  become_user: "{{ minio_user }}"
+  changed_when: false
+  no_log: true
+
+- name: Create default bucket
+  command: "mc mb local/{{ minio_bucket }} --ignore-existing --insecure"
+  become_user: "{{ minio_user }}"
+  changed_when: false
+
+# --- Fetch TLS cert to controller for app-server trust ---
+- name: Fetch MinIO TLS certificate to controller
+  fetch:
+    src: "{{ minio_config_dir }}/certs/public.crt"
+    dest: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ inventory_hostname }}/"
+    flat: yes

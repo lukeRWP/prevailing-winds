@@ -1,0 +1,27 @@
+---
+- name: Copy SQL init files
+  copy:
+    src: "{{ playbook_dir }}/../../../SQL/"
+    dest: /tmp/imp-sql/
+    mode: "0644"
+
+- name: Find init SQL files
+  find:
+    paths: /tmp/imp-sql
+    patterns: "IMP_*_Init.sql"
+  register: sql_files
+
+- name: Run init SQL files
+  mysql_db:
+    name: "{{ item.path | basename | regex_replace('_Init\\.sql$', '') }}"
+    state: import
+    target: "{{ item.path }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ sql_files.files }}"
+  when: sql_files.files | length > 0
+
+- name: Cleanup temp SQL files
+  file:
+    path: /tmp/imp-sql
+    state: absent

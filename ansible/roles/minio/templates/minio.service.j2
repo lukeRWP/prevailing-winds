@@ -1,0 +1,27 @@
+[Unit]
+Description=MinIO Object Storage
+Documentation=https://min.io/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ minio_user }}
+Group={{ minio_group }}
+EnvironmentFile={{ minio_config_dir }}/minio.env
+ExecStart=/usr/local/bin/minio server $MINIO_VOLUMES $MINIO_OPTS
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+TasksMax=infinity
+TimeoutStopSec=120
+SendSIGKILL=no
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

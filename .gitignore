@@ -1,0 +1,13 @@
+node_modules/
+*.db
+.env
+api.env
+*.log
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+*.retry
+__pycache__/
+*.pyc
+venv/

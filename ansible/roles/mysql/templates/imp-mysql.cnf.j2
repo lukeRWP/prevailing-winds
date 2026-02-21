@@ -1,0 +1,42 @@
+# IMP MySQL Configuration
+[mysqld]
+port = {{ mysql_port }}
+bind-address = {{ ansible_host }}
+skip_show_database
+datadir = {{ mysql_data_dir }}
+
+# SSL
+{% if mysql_require_ssl | default(true) | bool %}
+ssl-ca = {{ mysql_ssl_dir }}/ca.pem
+ssl-cert = {{ mysql_ssl_dir }}/server-cert.pem
+ssl-key = {{ mysql_ssl_dir }}/server-key.pem
+require_secure_transport = ON
+{% else %}
+require_secure_transport = OFF
+{% endif %}
+
+# Character set
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Performance
+max_connections = {{ mysql_max_connections }}
+innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
+innodb_log_file_size = 256M
+innodb_flush_log_at_trx_commit = 1
+innodb_flush_method = O_DIRECT
+
+# Logging
+log_error = /var/log/mysql/error.log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+
+# Binary log (for point-in-time recovery)
+server-id = 1
+log_bin = /var/log/mysql/mysql-bin
+binlog_expire_logs_seconds = 604800
+max_binlog_size = 100M
+
+[client]
+default-character-set = utf8mb4

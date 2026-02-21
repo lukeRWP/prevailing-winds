@@ -1,0 +1,22 @@
+---
+orchestrator_user: orchestrator
+orchestrator_group: orchestrator
+orchestrator_home: /opt/orchestrator
+orchestrator_api_dir: "{{ orchestrator_home }}/api"
+orchestrator_apps_dir: "{{ orchestrator_home }}/apps"
+orchestrator_log_dir: /var/log/orchestrator
+orchestrator_secrets_dir: /run/orchestrator/secrets
+orchestrator_port: 8500
+orchestrator_service_name: orchestrator
+
+# Terraform
+terraform_version: "1.7.5"
+
+# Ansible (installed via pip in virtualenv)
+orchestrator_venv: "{{ orchestrator_home }}/venv"
+
+# Vault integration
+vault_addr: "https://10.0.5.40:8200"
+
+# Multi-NIC environment access (set in inventory)
+orchestrator_env_nics: []
