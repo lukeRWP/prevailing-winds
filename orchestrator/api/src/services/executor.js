@@ -249,6 +249,8 @@ function buildChildEnv({ infraSecrets, appSecrets, sshKeyPath, manifest, env }) 
   const tfSecrets = { ...appSecrets, ...infraSecrets };
   if (tfSecrets.proxmox_api_token) childEnv.TF_VAR_proxmox_api_token = tfSecrets.proxmox_api_token;
   if (tfSecrets.unifi_api_key) childEnv.TF_VAR_unifi_api_key = tfSecrets.unifi_api_key;
+  if (tfSecrets.unifi_api_url) childEnv.TF_VAR_unifi_api_url = tfSecrets.unifi_api_url;
+  if (tfSecrets.proxmox_api_url) childEnv.TF_VAR_proxmox_api_url = tfSecrets.proxmox_api_url;
 
   // MinIO/S3 credentials for Terraform backend
   if (tfSecrets.minio_access_key) childEnv.AWS_ACCESS_KEY_ID = tfSecrets.minio_access_key;
