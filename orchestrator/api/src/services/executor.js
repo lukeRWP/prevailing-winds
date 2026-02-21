@@ -73,8 +73,8 @@ async function executeOperation(op) {
     const manifest = appRegistry.get(app);
     if (!manifest) throw new Error(`Unknown app: ${app}`);
 
-    // Read secrets from Vault
-    const appSecrets = await vault.getAppSecrets(app);
+    // Read secrets from Vault (env-specific path)
+    const appSecrets = env ? (await vault.readSecret(`secret/data/apps/${app}/${env}`) || {}) : {};
     const infraSecrets = await vault.readSecret('secret/data/pw/infra') || {};
 
     // Write SSH key to tmpfs (prefer infra secrets, fall back to app secrets, then local file)
@@ -85,10 +85,13 @@ async function executeOperation(op) {
       appendAndEmit(id, `[orchestrator] Using local SSH key (Vault not configured)\n`);
     }
 
-    // Ensure app repo is cloned and at the right ref (needed for deploy operations)
-    await gitManager.ensureRepo(app, manifest.repo);
-    const sha = await gitManager.pull(app, ref || 'main');
-    appendAndEmit(id, `[orchestrator] Checked out ${sha.substring(0, 8)}\n`);
+    // Only checkout app repo for non-infrastructure operations
+    if (!TERRAFORM_OPS.includes(type)) {
+      const defaultBranch = manifest.environments?.[env]?.pipeline?.autoDeployBranch || 'master';
+      await gitManager.ensureRepo(app, manifest.repo);
+      const sha = await gitManager.pull(app, ref || defaultBranch);
+      appendAndEmit(id, `[orchestrator] Checked out ${sha.substring(0, 8)}\n`);
+    }
 
     // Infrastructure lives in PW's directories on the orchestrator, not the app repo
     const infraDir = config.orchestratorHome;
