@@ -8,13 +8,8 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 8500,
-        ORCHESTRATOR_HOME: '/opt/orchestrator',
-        VAULT_ADDR: 'https://10.0.5.40:8200',
-        ANSIBLE_VENV: '/opt/orchestrator/venv'
-      }
+      // Env vars loaded from /opt/orchestrator/api.env via systemd EnvironmentFile
+      // Do not duplicate here — PM2 env block overrides EnvironmentFile values
     }
   ]
 };
