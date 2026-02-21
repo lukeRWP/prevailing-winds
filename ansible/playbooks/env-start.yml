@@ -10,7 +10,7 @@
 #   5. Full stack health verification
 
 - name: "Start MySQL"
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   gather_facts: no
   vars_files:
@@ -47,7 +47,7 @@
         msg: "MySQL started and accepting connections on port {{ mysql_port }}"
 
 - name: "Start MinIO"
-  hosts: imp_storage
+  hosts: "{{ group_storage }}"
   become: yes
   gather_facts: no
   vars_files:
@@ -79,13 +79,13 @@
         msg: "MinIO started and healthy on port {{ minio_port }}"
 
 - name: "Start app server"
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: yes
   gather_facts: no
   vars_files:
     - ../roles/app-server/defaults/main.yml
   tasks:
-    - name: Start imp-server service
+    - name: Start app-server service
       service:
         name: "{{ app_server_service_name }}"
         state: started
@@ -110,7 +110,7 @@
         msg: "App server started and healthy on port {{ app_server_port }}"
 
 - name: "Start Nginx"
-  hosts: imp_clients
+  hosts: "{{ group_clients }}"
   become: yes
   gather_facts: no
   tasks:
@@ -141,7 +141,7 @@
         msg: "Nginx started and responding on port 80"
 
 - name: "Full stack verification"
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: no
   gather_facts: no
   vars_files:

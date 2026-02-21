@@ -15,15 +15,15 @@
 
 - name: Deploy vhost configuration
   template:
-    src: "{{ 'imp-https.conf.j2' if nginx_tls_mode != 'none' else 'imp-http-only.conf.j2' }}"
-    dest: /etc/nginx/sites-available/imp.conf
+    src: "{{ 'app-https.conf.j2' if nginx_tls_mode != 'none' else 'app-http-only.conf.j2' }}"
+    dest: "/etc/nginx/sites-available/{{ app_name }}.conf"
     mode: "0644"
   notify: reload nginx
 
-- name: Enable IMP site
+- name: "Enable {{ app_name }} site"
   file:
-    src: /etc/nginx/sites-available/imp.conf
-    dest: /etc/nginx/sites-enabled/imp.conf
+    src: "/etc/nginx/sites-available/{{ app_name }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ app_name }}.conf"
     state: link
   notify: reload nginx
 
@@ -58,11 +58,11 @@
   command: >
     openssl req -x509 -nodes -days 365
     -newkey ec -pkeyopt ec_paramgen_curve:P-256
-    -keyout /etc/ssl/private/imp-selfsigned.key
-    -out /etc/ssl/certs/imp-selfsigned.crt
+    -keyout /etc/ssl/private/{{ app_name }}-selfsigned.key
+    -out /etc/ssl/certs/{{ app_name }}-selfsigned.crt
     -subj "/CN={{ nginx_server_name }}"
   args:
-    creates: /etc/ssl/certs/imp-selfsigned.crt
+    creates: /etc/ssl/certs/{{ app_name }}-selfsigned.crt
   when: nginx_tls_mode == "selfsigned"
   notify: reload nginx
 

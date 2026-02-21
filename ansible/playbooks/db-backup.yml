@@ -2,13 +2,13 @@
 # Database backup playbook
 # Usage: ansible-playbook playbooks/db-backup.yml -i inventories/ENV/hosts.yml
 
-- name: Backup IMP databases
-  hosts: imp_databases
+- name: "Backup {{ app_name | upper }} databases"
+  hosts: "{{ group_databases }}"
   become: yes
   tasks:
     - name: Ensure backup directory exists
       file:
-        path: /opt/imp-db/backups
+        path: "{{ mysql_backup_dir }}"
         state: directory
         owner: root
         group: root
@@ -18,17 +18,17 @@
       command: >
         mysqldump -u root -p{{ mysql_root_password }}
         --all-databases --single-transaction --routines --triggers
-        --result-file=/opt/imp-db/backups/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
+        --result-file={{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
       no_log: true
 
     - name: Compress backup
-      command: gzip /opt/imp-db/backups/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
+      command: gzip {{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
       args:
-        creates: /opt/imp-db/backups/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz
+        creates: "{{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
 
     - name: Remove backups older than 30 days
       find:
-        paths: /opt/imp-db/backups
+        paths: "{{ mysql_backup_dir }}"
         patterns: "backup-*.sql.gz"
         age: 30d
       register: old_backups
@@ -42,4 +42,4 @@
 
     - name: Report backup status
       debug:
-        msg: "Database backup complete: /opt/imp-db/backups/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
+        msg: "Database backup complete: {{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"

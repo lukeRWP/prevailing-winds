@@ -21,26 +21,26 @@
     - node-exporter
 
 - name: Configure database servers
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   roles:
     - mysql
 
 - name: Configure storage servers
-  hosts: imp_storage
+  hosts: "{{ group_storage }}"
   become: yes
   roles:
     - minio
 
 - name: Configure application servers
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: yes
   roles:
     - nodejs
     - app-server
 
 - name: Configure web servers
-  hosts: imp_clients
+  hosts: "{{ group_clients }}"
   become: yes
   roles:
     - nodejs
@@ -48,7 +48,7 @@
     - app-client
 
 - name: Configure monitoring servers
-  hosts: imp_monitoring
+  hosts: "{{ group_monitoring }}"
   become: yes
   roles:
     - prometheus
@@ -94,7 +94,7 @@
         deploy_user: "{{ deploy_user | default('deploy') }}"
 
 - name: Harden sudoers — scope runner user to required commands
-  hosts: imp_runner
+  hosts: "{{ group_runner }}"
   become: yes
   tags:
     - post-provision

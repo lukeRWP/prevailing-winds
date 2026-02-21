@@ -1,9 +1,18 @@
 ---
-app_server_base_dir: /opt/imp-server
+app_name: "imp"
+app_server_base_dir: "/opt/{{ app_name }}-server"
 app_server_releases_dir: "{{ app_server_base_dir }}/releases"
 app_server_shared_dir: "{{ app_server_base_dir }}/shared"
 app_server_current_link: "{{ app_server_base_dir }}/current"
 app_server_keep_releases: 3
 app_server_port: 2727
-app_server_service_name: imp-server
+app_server_service_name: "{{ app_name }}-server"
 deploy_user: deploy
+
+# Inventory group mappings (override per app)
+group_databases: "imp_databases"
+group_storage: "imp_storage"
+group_servers: "imp_servers"
+
+# App env vars (empty = build from IMP defaults, non-empty = use as provided)
+app_env_vars: {}

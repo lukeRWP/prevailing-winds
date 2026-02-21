@@ -3,7 +3,7 @@
   systemd:
     daemon_reload: yes
 
-- name: restart imp-server
+- name: restart app-server
   service:
-    name: imp-server
+    name: "{{ app_server_service_name }}"
     state: restarted

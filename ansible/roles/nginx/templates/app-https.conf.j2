@@ -1,4 +1,4 @@
-# IMP HTTPS reverse proxy
+# {{ app_name | upper }} HTTPS reverse proxy
 server {
     listen 80;
     server_name {{ nginx_server_name }};
@@ -10,8 +10,8 @@ server {
     server_name {{ nginx_server_name }};
 
 {% if nginx_tls_mode | default('letsencrypt') == 'selfsigned' %}
-    ssl_certificate     /etc/ssl/certs/imp-selfsigned.crt;
-    ssl_certificate_key /etc/ssl/private/imp-selfsigned.key;
+    ssl_certificate     /etc/ssl/certs/{{ app_name }}-selfsigned.crt;
+    ssl_certificate_key /etc/ssl/private/{{ app_name }}-selfsigned.key;
 {% else %}
     ssl_certificate     /etc/letsencrypt/live/{{ nginx_server_name }}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{{ nginx_server_name }}/privkey.pem;
@@ -25,7 +25,7 @@ server {
     client_max_body_size {{ nginx_client_max_body_size }};
 
     # Static client files
-    root /var/www/imp-client;
+    root /var/www/{{ app_name }}-client;
     index index.html;
 
     # API reverse proxy

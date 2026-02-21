@@ -1,18 +1,18 @@
 ---
 # Deploy IMP client application
-# Usage: ansible-playbook playbooks/deploy-client.yml -i inventories/dev/hosts.yml --become -e tarball=/path/to/imp-client.tar.gz
-- name: Deploy IMP Client
-  hosts: imp_clients
+# Usage: ansible-playbook playbooks/deploy-client.yml -i inventories/dev/hosts.yml --become -e tarball=/path/to/client.tar.gz
+- name: Deploy Client
+  hosts: "{{ group_clients }}"
   become: yes
   vars:
-    app_client_web_root: /var/www/imp-client
+    app_client_web_root: "/var/www/{{ app_name }}-client"
     deploy_user: deploy
 
   tasks:
     - name: Verify tarball variable is set
       assert:
         that: tarball is defined
-        fail_msg: "Pass -e tarball=/path/to/imp-client.tar.gz"
+        fail_msg: "Pass -e tarball=/path/to/client.tar.gz"
 
     - name: Ensure web root exists
       file:

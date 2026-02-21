@@ -4,7 +4,7 @@
 # Rollback: add -e rollback=true
 
 - name: Pre-deployment checks
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: no
   gather_facts: no
   tasks:
@@ -23,25 +23,25 @@
       when: client_tarball is defined
 
 - name: Pre-deploy config validation
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: yes
   gather_facts: no
   tasks:
     - name: Verify shared .env exists
       stat:
-        path: "{{ app_server_shared_dir | default('/opt/imp-server/shared') }}/.env"
+        path: "{{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/.env"
       register: env_file
 
     - name: Fail if .env is missing
       fail:
         msg: >
-          Shared .env not found at {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/.env.
+          Shared .env not found at {{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/.env.
           Deploy cannot proceed without server configuration.
       when: not env_file.stat.exists
 
     - name: Check MySQL SSL certs exist
       stat:
-        path: "{{ app_server_shared_dir | default('/opt/imp-server/shared') }}/mysql-ssl/{{ item }}"
+        path: "{{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/mysql-ssl/{{ item }}"
       loop:
         - client-cert.pem
         - client-key.pem
@@ -53,7 +53,7 @@
       fail:
         msg: >
           MySQL SSL cert missing: {{ item.item }}.
-          Expected at {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/mysql-ssl/{{ item.item }}
+          Expected at {{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/mysql-ssl/{{ item.item }}
       loop: "{{ mysql_ssl_files.results | default([]) }}"
       when:
         - mysql_require_ssl | default(true) | bool
@@ -64,7 +64,7 @@
     - name: Check MySQL SSL certs not expired
       command: >
         openssl x509 -checkend 0
-        -in {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/mysql-ssl/{{ item }}
+        -in {{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/mysql-ssl/{{ item }}
         -noout
       loop:
         - client-cert.pem
@@ -75,27 +75,27 @@
 
     - name: Check MinIO CA cert exists
       stat:
-        path: "{{ app_server_shared_dir | default('/opt/imp-server/shared') }}/minio-ca.crt"
+        path: "{{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/minio-ca.crt"
       register: minio_ca
       when: minio_use_ssl | default(false) | bool
 
     - name: Fail if MinIO CA cert is missing
       fail:
-        msg: "MinIO CA cert missing at {{ app_server_shared_dir | default('/opt/imp-server/shared') }}/minio-ca.crt"
+        msg: "MinIO CA cert missing at {{ app_server_shared_dir | default('/opt/' + app_name + '-server/shared') }}/minio-ca.crt"
       when:
         - minio_use_ssl | default(false) | bool
         - not minio_ca.stat.exists
 
 - name: Ensure MySQL config matches inventory
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   vars_files:
     - ../roles/mysql/defaults/main.yml
   tasks:
     - name: Deploy current MySQL configuration
       template:
-        src: "../roles/mysql/templates/imp-mysql.cnf.j2"
-        dest: "{{ mysql_config_dir | default('/etc/mysql/mysql.conf.d') }}/imp.cnf"
+        src: "../roles/mysql/templates/app-mysql.cnf.j2"
+        dest: "{{ mysql_config_dir | default('/etc/mysql/mysql.conf.d') }}/{{ app_name }}.cnf"
         owner: mysql
         group: mysql
         mode: "0644"
@@ -118,19 +118,19 @@
       when: mysql_config_changed.changed
 
 - name: Database backup (production safety)
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   tasks:
     - name: Pre-deploy database backup
       command: >
         mysqldump -u root -p{{ mysql_root_password }}
         --all-databases
-        --result-file={{ mysql_backup_dir | default('/opt/imp-db/backups') }}/pre-deploy-{{ ansible_date_time.iso8601_basic_short }}.sql
+        --result-file={{ mysql_backup_dir | default('/opt/' + app_name + '-db/backups') }}/pre-deploy-{{ ansible_date_time.iso8601_basic_short }}.sql
       when: environment_name | default('dev') != 'dev'
       no_log: true
 
 - name: Ensure MySQL is running
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   tasks:
     - name: Check MySQL service status
@@ -186,14 +186,14 @@
       changed_when: false
 
 - name: Run pending database migrations
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   tasks:
     - name: Pre-migration backup (QA/Prod only)
       command: >
         mysqldump -u root -p{{ mysql_root_password }}
         --all-databases
-        --result-file={{ mysql_backup_dir | default('/opt/imp-db/backups') }}/pre-migrate-{{ ansible_date_time.iso8601_basic_short }}.sql
+        --result-file={{ mysql_backup_dir | default('/opt/' + app_name + '-db/backups') }}/pre-migrate-{{ ansible_date_time.iso8601_basic_short }}.sql
       when:
         - environment_name | default('dev') != 'dev'
         - not (rollback | default(false) | bool)
@@ -202,7 +202,7 @@
     - name: Copy migration files to database host
       copy:
         src: "{{ db_migrations_path | default(playbook_dir + '/../../../SQL/migrations/') }}"
-        dest: /tmp/imp-migrations/
+        dest: "/tmp/{{ app_name }}-migrations/"
         mode: "0644"
       when: not (rollback | default(false) | bool)
 
@@ -213,7 +213,7 @@
       when: not (rollback | default(false) | bool)
 
 - name: Deploy server
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: yes
   tasks:
     - name: Run server deployment
@@ -222,7 +222,7 @@
         tasks_from: deploy
 
 - name: Deploy client
-  hosts: imp_clients
+  hosts: "{{ group_clients }}"
   become: yes
   tasks:
     - name: Run client deployment
@@ -231,7 +231,7 @@
         tasks_from: deploy
 
 - name: Post-deployment verification
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: yes
   gather_facts: no
   tasks:
@@ -246,4 +246,4 @@
 
     - name: Report deployment status
       debug:
-        msg: "IMP {{ environment_name | default('dev') }} deployment complete. Server healthy."
+        msg: "{{ app_name | upper }} {{ environment_name | default('dev') }} deployment complete. Server healthy."

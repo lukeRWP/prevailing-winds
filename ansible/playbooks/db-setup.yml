@@ -1,6 +1,6 @@
 ---
-- name: Initialize IMP databases
-  hosts: imp_databases
+- name: "Initialize {{ app_name | upper }} databases"
+  hosts: "{{ group_databases }}"
   become: yes
   roles:
     - role: mysql

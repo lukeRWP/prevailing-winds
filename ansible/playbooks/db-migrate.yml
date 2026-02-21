@@ -1,6 +1,6 @@
 ---
 - name: Run database migrations
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   vars:
     migration_file: ""

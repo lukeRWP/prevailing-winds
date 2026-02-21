@@ -2,6 +2,14 @@
 # Production environment configuration
 # Secrets are in vault.yml (encrypted with ansible-vault)
 
+# App identity and inventory group mapping
+app_name: "imp"
+group_servers: "imp_servers"
+group_clients: "imp_clients"
+group_databases: "imp_databases"
+group_storage: "imp_storage"
+group_monitoring: "imp_monitoring"
+
 # MySQL (non-secret config)
 mysql_require_ssl: true
 mysql_init_databases: false
@@ -9,7 +17,7 @@ mysql_innodb_buffer_pool_size: "4G"
 
 # Nginx — HTTPS with Let's Encrypt for production
 nginx_server_name: "web.razorwire-productions.com"
-nginx_backend_server: "{{ hostvars[groups['imp_servers'][0]].ansible_host }}"
+nginx_backend_server: "{{ hostvars[groups[group_servers][0]].ansible_host }}"
 nginx_tls_mode: "letsencrypt"
 
 # Network — VLAN 120 for production environment

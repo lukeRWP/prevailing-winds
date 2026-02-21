@@ -9,11 +9,11 @@
 #   - Backup is not stale (< 25 hours old by default)
 
 - name: Verify database backup integrity
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   gather_facts: yes
   vars:
-    backup_dir: "{{ mysql_backup_dir | default('/opt/imp-db/backups') }}"
+    backup_dir: "{{ mysql_backup_dir | default('/opt/' + app_name + '-db/backups') }}"
     max_backup_age_hours: 25
 
   tasks:

@@ -1,11 +1,11 @@
 ---
 # Apply only PENDING migrations from SQL/migrations/
-# Expects: migration files already copied to /tmp/imp-migrations/ by the calling playbook
-# Each migration file self-records in IMP_ADMIN.schema_migrations via INSERT IGNORE
+# Expects: migration files already copied to /tmp/{{ app_name }}-migrations/ by the calling playbook
+# Each migration file self-records in {{ mysql_admin_db }}.schema_migrations via INSERT IGNORE
 
 - name: Check migrations directory exists
   stat:
-    path: /tmp/imp-migrations
+    path: /tmp/{{ app_name }}-migrations
   register: migrations_dir
 
 - name: Verify MySQL is reachable
@@ -27,8 +27,8 @@
 - name: Ensure schema_migrations table exists
   shell: |
     mysql --defaults-file=/root/.my.cnf -e "
-      CREATE DATABASE IF NOT EXISTS IMP_ADMIN;
-      CREATE TABLE IF NOT EXISTS IMP_ADMIN.schema_migrations (
+      CREATE DATABASE IF NOT EXISTS {{ mysql_admin_db }};
+      CREATE TABLE IF NOT EXISTS {{ mysql_admin_db }}.schema_migrations (
         migration VARCHAR(255) NOT NULL PRIMARY KEY,
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );" 2>&1
@@ -37,7 +37,7 @@
 
 - name: Find numbered migration SQL files
   find:
-    paths: /tmp/imp-migrations
+    paths: /tmp/{{ app_name }}-migrations
     patterns: "[0-9]*.sql"
     excludes: "000_COMBINED_MIGRATIONS.sql"
   register: migration_files
@@ -47,7 +47,7 @@
   shell: |
     MIGRATION_NAME=$(basename "{{ item.path }}" .sql)
     ALREADY_APPLIED=$(mysql --defaults-file=/root/.my.cnf -N -B \
-      -e "SELECT COUNT(*) FROM IMP_ADMIN.schema_migrations WHERE migration='${MIGRATION_NAME}';" 2>&1)
+      -e "SELECT COUNT(*) FROM {{ mysql_admin_db }}.schema_migrations WHERE migration='${MIGRATION_NAME}';" 2>&1)
     RC=$?
     if [ $RC -ne 0 ]; then
       echo "ERROR: Failed to check migration status for ${MIGRATION_NAME}: ${ALREADY_APPLIED}"
@@ -97,5 +97,5 @@
 
 - name: Cleanup temp migration files
   file:
-    path: /tmp/imp-migrations
+    path: /tmp/{{ app_name }}-migrations
     state: absent

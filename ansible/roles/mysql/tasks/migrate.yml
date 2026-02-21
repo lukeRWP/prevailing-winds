@@ -9,36 +9,36 @@
 - name: Copy migration files
   copy:
     src: "{{ playbook_dir }}/../../../SQL/migrations/"
-    dest: /tmp/imp-migrations/
+    dest: "/tmp/{{ app_name }}-migrations/"
     mode: "0644"
   when: migration_file == ""
 
 - name: Copy specific migration file
   copy:
     src: "{{ migration_file }}"
-    dest: /tmp/imp-migration.sql
+    dest: "/tmp/{{ app_name }}-migration.sql"
     mode: "0644"
   when: migration_file != ""
 
 - name: Run specific migration
   mysql_db:
-    name: IMP_ADMIN
+    name: "{{ mysql_admin_db }}"
     state: import
-    target: /tmp/imp-migration.sql
+    target: "/tmp/{{ app_name }}-migration.sql"
     login_user: root
     login_password: "{{ mysql_root_password }}"
   when: migration_file != ""
 
 - name: Find pending migrations
   find:
-    paths: /tmp/imp-migrations
+    paths: "/tmp/{{ app_name }}-migrations"
     patterns: "*.sql"
   register: migration_files
   when: migration_file == ""
 
 - name: Run all migrations in order
   mysql_db:
-    name: IMP_ADMIN
+    name: "{{ mysql_admin_db }}"
     state: import
     target: "{{ item.path }}"
     login_user: root
@@ -51,5 +51,5 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - /tmp/imp-migrations
-    - /tmp/imp-migration.sql
+    - "/tmp/{{ app_name }}-migrations"
+    - "/tmp/{{ app_name }}-migration.sql"

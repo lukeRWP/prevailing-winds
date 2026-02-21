@@ -2,13 +2,13 @@
 - name: Copy SQL init files
   copy:
     src: "{{ playbook_dir }}/../../../SQL/"
-    dest: /tmp/imp-sql/
+    dest: "/tmp/{{ app_name }}-sql/"
     mode: "0644"
 
 - name: Find init SQL files
   find:
-    paths: /tmp/imp-sql
-    patterns: "IMP_*_Init.sql"
+    paths: "/tmp/{{ app_name }}-sql"
+    patterns: "{{ mysql_schema_prefix }}*_Init.sql"
   register: sql_files
 
 - name: Run init SQL files
@@ -23,5 +23,5 @@
 
 - name: Cleanup temp SQL files
   file:
-    path: /tmp/imp-sql
+    path: "/tmp/{{ app_name }}-sql"
     state: absent

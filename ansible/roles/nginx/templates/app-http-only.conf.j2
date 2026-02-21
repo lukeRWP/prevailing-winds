@@ -1,4 +1,4 @@
-# IMP HTTP reverse proxy (no TLS — dev/internal use only)
+# {{ app_name | upper }} HTTP reverse proxy (no TLS — dev/internal use only)
 server {
     listen 80;
     server_name {{ nginx_server_name }};
@@ -6,7 +6,7 @@ server {
     client_max_body_size {{ nginx_client_max_body_size }};
 
     # Static client files
-    root /var/www/imp-client;
+    root /var/www/{{ app_name }}-client;
     index index.html;
 
     # API reverse proxy

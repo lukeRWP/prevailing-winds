@@ -15,7 +15,7 @@
 #   -e force=true          Allow overwriting non-empty target database
 
 - name: "Seed {{ target_env }} from {{ source_env }}"
-  hosts: imp_databases
+  hosts: "{{ group_databases }}"
   become: yes
   gather_facts: yes
   vars:
@@ -23,7 +23,7 @@
     target_env: ""
     source_db_host: ""
     source_minio_host: ""
-    seed_backup_dir: "{{ mysql_backup_dir | default('/opt/imp-db/backups') }}"
+    seed_backup_dir: "{{ mysql_backup_dir | default('/opt/' + app_name + '-db/backups') }}"
     sanitize_data: true
 
   tasks:
@@ -48,7 +48,7 @@
           command: >
             mysql --defaults-file=/root/.my.cnf
             -N -e "SELECT COUNT(*) FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA LIKE 'IMP_%' AND TABLE_ROWS > 0"
+            WHERE TABLE_SCHEMA LIKE '{{ mysql_schema_prefix }}%' AND TABLE_ROWS > 0"
           register: target_row_count
           changed_when: false
 
@@ -111,7 +111,7 @@
           command: >
             mysql --defaults-file=/root/.my.cnf
             -N -e "SELECT COUNT(*) FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA LIKE 'IMP_%' AND TABLE_ROWS > 0"
+            WHERE TABLE_SCHEMA LIKE '{{ mysql_schema_prefix }}%' AND TABLE_ROWS > 0"
           register: post_seed_count
           changed_when: false
 
@@ -121,12 +121,12 @@
 
 # --- MinIO file sync ---
 - name: "Seed MinIO files: {{ source_env }} → {{ target_env }}"
-  hosts: imp_storage
+  hosts: "{{ group_storage }}"
   become: yes
   gather_facts: no
   vars:
     source_minio_host: ""
-    minio_bucket: "imp-files"
+    minio_bucket: "{{ app_name }}-files"
   vars_files:
     - ../roles/minio/defaults/main.yml
 

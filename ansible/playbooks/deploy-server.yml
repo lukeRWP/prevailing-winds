@@ -1,25 +1,25 @@
 ---
 # Deploy IMP server application
-# Usage: ansible-playbook playbooks/deploy-server.yml -i inventories/dev/hosts.yml --become -e tarball=/path/to/imp-server.tar.gz
-- name: Deploy IMP Server
-  hosts: imp_servers
+# Usage: ansible-playbook playbooks/deploy-server.yml -i inventories/dev/hosts.yml --become -e tarball=/path/to/server.tar.gz
+- name: Deploy Server
+  hosts: "{{ group_servers }}"
   become: yes
   vars:
     release_ts: "{{ ansible_date_time.iso8601_basic_short }}"
     release_dir: "{{ app_server_releases_dir }}/{{ release_ts }}"
-    app_server_base_dir: /opt/imp-server
+    app_server_base_dir: "/opt/{{ app_name }}-server"
     app_server_releases_dir: "{{ app_server_base_dir }}/releases"
     app_server_shared_dir: "{{ app_server_base_dir }}/shared"
     app_server_current_link: "{{ app_server_base_dir }}/current"
     app_server_keep_releases: 3
-    app_server_service_name: imp-server
+    app_server_service_name: "{{ app_name }}-server"
     deploy_user: deploy
 
   tasks:
     - name: Verify tarball variable is set
       assert:
         that: tarball is defined
-        fail_msg: "Pass -e tarball=/path/to/imp-server.tar.gz"
+        fail_msg: "Pass -e tarball=/path/to/server.tar.gz"
 
     - name: Create release directory
       file:
@@ -80,7 +80,7 @@
       systemd:
         daemon_reload: yes
 
-    - name: Restart imp-server
+    - name: Restart app server
       systemd:
         name: "{{ app_server_service_name }}"
         state: restarted

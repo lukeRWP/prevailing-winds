@@ -1,5 +1,5 @@
 [Unit]
-Description=IMP Server (Node.js)
+Description={{ app_name | upper }} Server (Node.js)
 After=network.target
 Wants=network.target
 
@@ -13,9 +13,9 @@ Environment=NODE_ENV={{ app_server_node_env | default('production') }}
 Environment=HOME=/home/{{ deploy_user }}
 Environment=NODE_EXTRA_CA_CERTS={{ app_server_shared_dir }}/minio-ca.crt
 EnvironmentFile={{ app_server_shared_dir }}/.env
-ExecStart=/usr/bin/pm2 start index.js --name imp-server -i max
-ExecReload=/usr/bin/pm2 reload imp-server
-ExecStop=/usr/bin/pm2 stop imp-server
+ExecStart=/usr/bin/pm2 start index.js --name {{ app_server_service_name }} -i max
+ExecReload=/usr/bin/pm2 reload {{ app_server_service_name }}
+ExecStop=/usr/bin/pm2 stop {{ app_server_service_name }}
 
 # Security hardening
 ProtectSystem=full

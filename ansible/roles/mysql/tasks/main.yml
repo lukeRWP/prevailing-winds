@@ -62,7 +62,7 @@
         -key {{ mysql_ssl_dir }}/ca-key.pem
         -out {{ mysql_ssl_dir }}/ca.pem
         -days 365
-        -subj "/CN=IMP-MySQL-CA/O=IMP/C=US"
+        -subj "/CN={{ mysql_ssl_org }}-MySQL-CA/O={{ mysql_ssl_org }}/C=US"
 
     - name: Generate server private key
       command: openssl genrsa -out {{ mysql_ssl_dir }}/server-key.pem 2048
@@ -72,7 +72,7 @@
         openssl req -new
         -key {{ mysql_ssl_dir }}/server-key.pem
         -out {{ mysql_ssl_dir }}/server-req.pem
-        -subj "/CN={{ ansible_host }}/O=IMP/C=US"
+        -subj "/CN={{ ansible_host }}/O={{ mysql_ssl_org }}/C=US"
 
     - name: Sign server certificate
       command: >
@@ -92,7 +92,7 @@
         openssl req -new
         -key {{ mysql_ssl_dir }}/client-key.pem
         -out {{ mysql_ssl_dir }}/client-req.pem
-        -subj "/CN=imp-client/O=IMP/C=US"
+        -subj "/CN={{ app_name }}-client/O={{ mysql_ssl_org }}/C=US"
 
     - name: Sign client certificate
       command: >
@@ -140,17 +140,17 @@
     - client-key.pem
   when: mysql_require_ssl | default(true) | bool
 
-- name: Disable default bind-address (we set it in imp.cnf)
+- name: Disable default bind-address (we set it in {{ app_name }}.cnf)
   lineinfile:
     path: /etc/mysql/mysql.conf.d/mysqld.cnf
     regexp: '^bind-address'
-    line: '# bind-address = 127.0.0.1  # Overridden in imp.cnf'
+    line: '# bind-address = 127.0.0.1  # Overridden in {{ app_name }}.cnf'
   notify: restart mysql
 
 - name: Deploy MySQL configuration
   template:
-    src: imp-mysql.cnf.j2
-    dest: "{{ mysql_config_dir }}/imp.cnf"
+    src: app-mysql.cnf.j2
+    dest: "{{ mysql_config_dir }}/{{ app_name }}.cnf"
     owner: mysql
     group: mysql
     mode: "0644"

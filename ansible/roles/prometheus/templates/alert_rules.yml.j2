@@ -1,5 +1,5 @@
 groups:
-  - name: imp_node_alerts
+  - name: {{ app_name }}_node_alerts
     rules:
       # VM is down
       - alert: InstanceDown
@@ -52,21 +52,21 @@ groups:
           summary: "Critical disk space on {{ '{{' }} $labels.instance {{ '}}' }}"
           description: "Root filesystem is {{ '{{' }} $value | printf \"%.1f\" {{ '}}' }}% full — action required"
 
-  - name: imp_app_alerts
+  - name: {{ app_name }}_app_alerts
     rules:
       # IMP server is down
-      - alert: ImpServerDown
-        expr: up{job="imp-server"} == 0
+      - alert: AppServerDown
+        expr: up{job="{{ app_name }}-server"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "IMP server is down"
-          description: "The IMP API server has been unreachable for 1 minute."
+          summary: "{{ app_name | upper }} server is down"
+          description: "The {{ app_name | upper }} API server has been unreachable for 1 minute."
 
       # High request latency
       - alert: HighRequestLatency
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="imp-server"}[5m])) > 2
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="{{ app_name }}-server"}[5m])) > 2
         for: 5m
         labels:
           severity: warning
@@ -74,7 +74,7 @@ groups:
           summary: "High API latency"
           description: "95th percentile request latency is above 2 seconds"
 
-  - name: imp_database_alerts
+  - name: {{ app_name }}_database_alerts
     rules:
       # MySQL is down
       - alert: MysqlDown
@@ -86,7 +86,7 @@ groups:
           summary: "MySQL is unreachable"
           description: "MySQL exporter on {{ '{{' }} $labels.instance {{ '}}' }} is down."
 
-  - name: imp_cert_alerts
+  - name: {{ app_name }}_cert_alerts
     rules:
       # TLS certificate expiring within 7 days
       - alert: CertExpiringSoon
@@ -108,7 +108,7 @@ groups:
           summary: "TLS cert expiring soon on {{ '{{' }} $labels.instance {{ '}}' }}"
           description: "Certificate expires in {{ '{{' }} $value | printf \"%.0f\" {{ '}}' }} days"
 
-  - name: imp_storage_alerts
+  - name: {{ app_name }}_storage_alerts
     rules:
       # MinIO is down
       - alert: MinioDown

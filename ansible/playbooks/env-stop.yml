@@ -19,15 +19,15 @@
 
   tasks:
     # --- 1. Stop app server ---
-    - name: Stop app server (imp-server)
+    - name: Stop app server
       block:
-        - name: Check if imp-server service exists
+        - name: Check if app-server service exists
           command: systemctl is-enabled {{ app_server_service_name }}
           register: server_exists
           changed_when: false
           failed_when: false
 
-        - name: Stop imp-server
+        - name: Stop app-server
           service:
             name: "{{ app_server_service_name }}"
             state: stopped
@@ -44,7 +44,7 @@
         - name: Report app server status
           debug:
             msg: "App server {{ 'stopped' if server_exists.rc == 0 else 'not installed — skipped' }}"
-      when: inventory_hostname in groups.get('imp_servers', [])
+      when: inventory_hostname in groups.get(group_servers, [])
       ignore_errors: true
 
     # --- 2. Stop nginx ---
@@ -65,7 +65,7 @@
         - name: Report nginx status
           debug:
             msg: "Nginx {{ 'stopped' if nginx_exists.rc == 0 else 'not installed — skipped' }}"
-      when: inventory_hostname in groups.get('imp_clients', [])
+      when: inventory_hostname in groups.get(group_clients, [])
       ignore_errors: true
 
     # --- 3. Stop MinIO ---
@@ -94,7 +94,7 @@
         - name: Report MinIO status
           debug:
             msg: "MinIO {{ 'stopped' if minio_exists.rc == 0 else 'not installed — skipped' }}"
-      when: inventory_hostname in groups.get('imp_storage', [])
+      when: inventory_hostname in groups.get(group_storage, [])
       ignore_errors: true
 
     # --- 4. Stop MySQL (last — everything depends on it) ---
@@ -123,7 +123,7 @@
         - name: Report MySQL status
           debug:
             msg: "MySQL {{ 'stopped' if mysql_exists.rc == 0 else 'not installed — skipped' }}"
-      when: inventory_hostname in groups.get('imp_databases', [])
+      when: inventory_hostname in groups.get(group_databases, [])
       ignore_errors: true
 
 - name: Environment stop summary

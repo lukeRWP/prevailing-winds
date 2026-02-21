@@ -9,19 +9,19 @@
     - common
 
 - name: Configure Vault server
-  hosts: imp_vault
+  hosts: "{{ group_vault }}"
   become: yes
   roles:
     - vault
 
 - name: Configure GitHub Actions runner
-  hosts: imp_runner
+  hosts: "{{ group_runner }}"
   become: yes
   roles:
     - github-runner
 
 - name: Configure Orchestrator
-  hosts: imp_orchestrator
+  hosts: "{{ group_orchestrator }}"
   become: yes
   roles:
     - nodejs

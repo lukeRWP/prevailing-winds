@@ -1,14 +1,15 @@
 ---
+app_name: "imp"
 mysql_version: "8.0"
 mysql_port: 3306
 mysql_data_dir: /var/lib/mysql
 mysql_ssl_dir: /etc/mysql/ssl
 mysql_config_dir: /etc/mysql/mysql.conf.d
-mysql_backup_dir: /opt/imp-db/backups
+mysql_backup_dir: "/opt/{{ app_name }}-db/backups"
 mysql_max_connections: 200
 mysql_innodb_buffer_pool_size: "4G"
 
-# Database names (all 13 IMP databases)
+# Database names (defaults to IMP's 13 databases, override per app)
 mysql_databases:
   - IMP_PROJECTS
   - IMP_PROGRAMS
@@ -24,11 +25,18 @@ mysql_databases:
   - IMP_FILES
   - IMP_NOTES
 
+# Admin database (holds schema_migrations table)
+mysql_admin_db: "IMP_ADMIN"
+mysql_schema_prefix: "IMP_"
+
+# SSL certificate identity
+mysql_ssl_org: "{{ app_name | upper }}"
+
 # Credentials from Vault (set via playbook vars)
 mysql_root_password: ""
-mysql_app_user: "imp_api_001"
+mysql_app_user: "{{ app_name }}_api_001"
 mysql_app_password: ""
-mysql_ssl_user: "imp_ssl_user"
+mysql_ssl_user: "{{ app_name }}_ssl_user"
 mysql_ssl_password: ""
 
 # Init flag

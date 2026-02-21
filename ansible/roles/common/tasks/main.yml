@@ -99,7 +99,7 @@
       maxretry = 5
       bantime = 3600
       findtime = 600
-    dest: /etc/fail2ban/jail.d/imp-sshd.conf
+    dest: "/etc/fail2ban/jail.d/{{ app_name | default('app') }}-sshd.conf"
     mode: "0644"
   notify: restart fail2ban
 
@@ -112,7 +112,7 @@
 - name: Deploy sysctl hardening
   copy:
     content: |
-      # IMP kernel hardening
+      # Kernel hardening
       net.ipv4.conf.all.rp_filter = 1
       net.ipv4.conf.default.rp_filter = 1
       net.ipv4.conf.all.accept_redirects = 0
@@ -123,7 +123,7 @@
       net.ipv4.icmp_echo_ignore_broadcasts = 1
       kernel.randomize_va_space = 2
       fs.suid_dumpable = 0
-    dest: /etc/sysctl.d/99-imp-hardening.conf
+    dest: "/etc/sysctl.d/99-{{ app_name | default('app') }}-hardening.conf"
     mode: "0644"
   notify: apply sysctl
 

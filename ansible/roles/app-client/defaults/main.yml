@@ -1,7 +1,8 @@
 ---
-app_client_base_dir: /opt/imp-client
+app_name: "imp"
+app_client_base_dir: "/opt/{{ app_name }}-client"
 app_client_releases_dir: "{{ app_client_base_dir }}/releases"
 app_client_current_link: "{{ app_client_base_dir }}/current"
-app_client_web_root: /var/www/imp-client
+app_client_web_root: "/var/www/{{ app_name }}-client"
 app_client_keep_releases: 3
 deploy_user: deploy

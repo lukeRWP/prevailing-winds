@@ -7,7 +7,7 @@
 - name: Deploy netplan config for environment VLAN NICs
   template:
     src: netplan-env-nics.yml.j2
-    dest: /etc/netplan/60-imp-env-vlans.yaml
+    dest: "/etc/netplan/60-{{ app_name | default('app') }}-env-vlans.yaml"
     owner: root
     group: root
     mode: "0600"

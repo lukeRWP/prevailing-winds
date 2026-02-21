@@ -7,7 +7,7 @@
 #   ansible-playbook playbooks/seed-admin.yml -i inventories/dev/hosts.yml --vault-password-file ~/.ansible-vault-pass --become
 
 - name: Seed admin data
-  hosts: imp_servers
+  hosts: "{{ group_servers }}"
   become: yes
   become_user: "{{ deploy_user | default('deploy') }}"
   gather_facts: no
@@ -15,7 +15,7 @@
     - name: Run seed-admin script
       command: node scripts/seed-admin.js
       args:
-        chdir: "{{ app_server_current_link | default('/opt/imp-server/current') }}"
+        chdir: "{{ app_server_current_link | default('/opt/' + app_name + '-server/current') }}"
       register: seed_result
       changed_when: "'new record' in seed_result.stdout"
 
