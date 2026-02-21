@@ -33,6 +33,15 @@ async function buildEnvironment(appName, envName, { ref, force = false } = {}) {
   // Step 2: Generate tfvars from manifest
   await tfvarsGenerator.writeTfvars(appName, envName);
 
+  // Step 2.5: Ensure cloud-init snippet exists on Proxmox node
+  const envConfig = appRegistry.getEnvironment(appName, envName);
+  const targetNode = Object.values(envConfig.hosts || {})[0]?.proxmoxNode || 'prx002';
+  try {
+    await proxmoxClient.ensureCloudInitSnippet(targetNode);
+  } catch (err) {
+    logger.warn('lifecycle', `Cloud-init snippet upload failed (may already exist): ${err.message}`);
+  }
+
   // Steps 3-6 are queued and run serially via the operation queue
   const ops = [];
 

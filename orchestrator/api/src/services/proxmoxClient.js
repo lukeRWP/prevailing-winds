@@ -1,4 +1,7 @@
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const logger = require('../utils/logger');
 const vault = require('./vault');
 
@@ -207,8 +210,68 @@ async function destroyEnvironmentVMs(appName, envName, envConfig) {
   return { destroyed, skipped };
 }
 
+/**
+ * Upload a snippet file to Proxmox storage via multipart form upload.
+ */
+async function uploadSnippet(node, storage, fileName, content) {
+  const { apiUrl, apiToken } = await getCredentials();
+  const url = new URL(`${apiUrl}/nodes/${node}/storage/${storage}/upload`);
+  const boundary = `----PVEBoundary${crypto.randomBytes(12).toString('hex')}`;
+
+  const bodyParts = [
+    `--${boundary}\r\nContent-Disposition: form-data; name="content"\r\n\r\nsnippets`,
+    `--${boundary}\r\nContent-Disposition: form-data; name="filename"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n${content}`,
+    `--${boundary}--\r\n`,
+  ];
+  const payload = bodyParts.join('\r\n');
+
+  const options = {
+    hostname: url.hostname,
+    port: url.port || 8006,
+    path: url.pathname,
+    method: 'POST',
+    agent,
+    headers: {
+      'Authorization': `PVEAPIToken=${apiToken}`,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': Buffer.byteLength(payload),
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(`Proxmox upload ${fileName}: HTTP ${res.statusCode} - ${data}`));
+        }
+      });
+    });
+    req.on('error', (err) => reject(new Error(`Proxmox upload failed: ${err.message}`)));
+    req.write(payload);
+    req.end();
+  });
+}
+
+/**
+ * Ensure the cloud-init base snippet exists on the target Proxmox node.
+ * Reads the template from the terraform directory and uploads it.
+ */
+async function ensureCloudInitSnippet(targetNode, storage = 'local') {
+  const templatePath = path.join(__dirname, '../../..', 'terraform/templates/cloud-init-base.yml');
+  const content = fs.readFileSync(templatePath, 'utf-8');
+
+  logger.info(CONTEXT, `Uploading cloud-init snippet to ${targetNode}:${storage}:snippets/pw-cloud-init-base.yml`);
+  await uploadSnippet(targetNode, storage, 'pw-cloud-init-base.yml', content);
+  logger.info(CONTEXT, `Cloud-init snippet uploaded successfully`);
+}
+
 module.exports = {
   listVMs,
   findEnvironmentVMs,
   destroyEnvironmentVMs,
+  ensureCloudInitSnippet,
 };
