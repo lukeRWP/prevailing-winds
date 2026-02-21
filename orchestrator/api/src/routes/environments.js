@@ -3,6 +3,7 @@ const { success, error } = require('../utils/response');
 const appRegistry = require('../services/appRegistry');
 const executor = require('../services/executor');
 const inventoryGenerator = require('../services/inventoryGenerator');
+const proxmoxClient = require('../services/proxmoxClient');
 
 const router = Router();
 
@@ -14,18 +15,28 @@ function requireAppEnv(req, res) {
   return { app, env, appName: req.params.app, envName: req.params.env };
 }
 
-router.get('/api/_x_/apps/:app/envs/:env/status', (req, res) => {
+router.get('/api/_x_/apps/:app/envs/:env/status', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
 
-  return success(res, {
+  const data = {
     app: ctx.appName,
     env: ctx.envName,
     vlan: ctx.env.vlan,
     cidr: ctx.env.cidr,
     hosts: ctx.env.hosts,
-    pipeline: ctx.env.pipeline || null
-  });
+    pipeline: ctx.env.pipeline || null,
+    vms: [],
+  };
+
+  // Include live VM state from Proxmox (best-effort)
+  try {
+    data.vms = await proxmoxClient.findEnvironmentVMs(ctx.appName, ctx.envName, ctx.env);
+  } catch (err) {
+    data.vmsError = err.message;
+  }
+
+  return success(res, data);
 });
 
 router.post('/api/_y_/apps/:app/envs/:env/start', async (req, res) => {

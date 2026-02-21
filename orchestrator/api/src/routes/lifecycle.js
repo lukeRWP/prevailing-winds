@@ -3,6 +3,7 @@ const { success, error } = require('../utils/response');
 const appRegistry = require('../services/appRegistry');
 const lifecycle = require('../services/lifecycleOrchestrator');
 const credentialGenerator = require('../services/credentialGenerator');
+const proxmoxClient = require('../services/proxmoxClient');
 
 const router = Router();
 
@@ -61,6 +62,34 @@ router.post('/api/_y_/apps/:app/envs/:env/destroy', async (req, res) => {
     const { ref } = req.body || {};
     const result = await lifecycle.destroyEnvironment(ctx.appName, ctx.envName, { ref });
     return success(res, result, result.message, 202);
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+// List VMs for an environment (live Proxmox discovery)
+router.get('/api/_x_/apps/:app/envs/:env/vms', async (req, res) => {
+  try {
+    const ctx = requireAppEnv(req, res);
+    if (!ctx) return;
+
+    const envConfig = appRegistry.getEnvironment(ctx.appName, ctx.envName);
+    const vms = await proxmoxClient.findEnvironmentVMs(ctx.appName, ctx.envName, envConfig);
+    return success(res, vms, `Found ${vms.length} VMs`);
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+// Destroy orphan VMs for an environment via Proxmox API
+router.post('/api/_y_/apps/:app/envs/:env/vms/destroy', async (req, res) => {
+  try {
+    const ctx = requireAppEnv(req, res);
+    if (!ctx) return;
+
+    const envConfig = appRegistry.getEnvironment(ctx.appName, ctx.envName);
+    const result = await proxmoxClient.destroyEnvironmentVMs(ctx.appName, ctx.envName, envConfig);
+    return success(res, result, `Destroyed ${result.destroyed.length} VMs`);
   } catch (err) {
     return error(res, err.message, 500);
   }
