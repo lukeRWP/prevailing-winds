@@ -50,9 +50,23 @@ rsync -a --delete "${PW_REPO}/ansible/" "${ORCH_HOME}/ansible/"
 echo "Syncing Terraform configs..."
 rsync -a --delete \
   --exclude='.terraform' \
+  --exclude='.terraform.lock.hcl' \
   --exclude='*.tfstate*' \
   --exclude='environments/*.tfvars' \
+  --exclude='backend.tf' \
   "${PW_REPO}/terraform/" "${ORCH_HOME}/terraform/"
+
+# Ensure backend.tf exists (local backend for orchestrator; repo has S3 backend for MinIO)
+if [ ! -f "${ORCH_HOME}/terraform/backend.tf" ]; then
+  cat > "${ORCH_HOME}/terraform/backend.tf" <<'TFEOF'
+terraform {
+  backend "local" {
+    path = "/opt/orchestrator/data/terraform.tfstate"
+  }
+}
+TFEOF
+  echo "Created local backend.tf (first deploy)"
+fi
 
 # Ensure certs directory exists
 mkdir -p "${ORCH_HOME}/certs"
