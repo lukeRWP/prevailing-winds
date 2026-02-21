@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# UniFi Network — DHCP reservations and DNS records for IMP VMs
+# UniFi Network — DHCP reservations and DNS records for app VMs
 # Maps Proxmox VM MAC addresses to fixed IPs via UniFi controller
 # ---------------------------------------------------------------------------
 
@@ -10,7 +10,7 @@ data "unifi_network" "internal" {
 # Look up environment-specific network (created by unifi-networks.tf in shared workspace)
 data "unifi_network" "env" {
   count = var.environment != "shared" && var.env_vlan_tag != 87 ? 1 : 0
-  name  = "IMP-${upper(var.environment)}"
+  name  = "${upper(var.app_name)}-${upper(var.environment)}"
 }
 
 # Look up external network for VLAN 7 DHCP reservations
@@ -36,8 +36,8 @@ resource "unifi_user" "vault" {
   count = var.deploy_shared ? 1 : 0
 
   mac        = lower(module.vault[0].mac_address[1])
-  name       = "imp-vault"
-  note       = "IMP Vault server (VM ${module.vault[0].vm_id})"
+  name       = "pw-vault"
+  note       = "PW Vault server (VM ${module.vault[0].vm_id})"
   fixed_ip   = var.vault_ip
   network_id = data.unifi_network.internal.id
 }
@@ -46,8 +46,8 @@ resource "unifi_user" "runner" {
   count = var.deploy_shared ? 1 : 0
 
   mac        = lower(module.runner[0].mac_address[1])
-  name       = "imp-runner"
-  note       = "IMP GitHub Actions runner (VM ${module.runner[0].vm_id})"
+  name       = "pw-runner"
+  note       = "PW GitHub Actions runner (VM ${module.runner[0].vm_id})"
   fixed_ip   = var.runner_ip
   network_id = data.unifi_network.internal.id
 }
@@ -57,11 +57,11 @@ resource "unifi_user" "runner" {
 # ---------------------------------------------------------------------------
 
 resource "unifi_user" "env_vms" {
-  for_each = var.environment != "shared" ? module.imp_vms.vm_ids : {}
+  for_each = var.environment != "shared" ? module.app_vms.vm_ids : {}
 
-  mac        = lower(module.imp_vms.mac_addresses[each.key][1])
-  name       = "imp-${each.key}-${var.environment}"
-  note       = "IMP ${each.key} ${var.environment} (VM ${each.value})"
+  mac        = lower(module.app_vms.mac_addresses[each.key][1])
+  name       = "${var.app_name}-${each.key}-${var.environment}"
+  note       = "${var.app_name} ${each.key} ${var.environment} (VM ${each.value})"
   fixed_ip   = lookup(var.vm_ips, each.key, null)
   network_id = local.env_network_id
 }
@@ -74,15 +74,15 @@ resource "unifi_user" "env_vms" {
 resource "unifi_user" "env_vms_external" {
   for_each = var.environment != "shared" ? var.vm_external_ips : {}
 
-  mac        = lower(module.imp_vms.mac_addresses[each.key][2])
-  name       = "imp-${each.key}-${var.environment}-ext"
-  note       = "IMP ${each.key} ${var.environment} external NIC (VM ${module.imp_vms.vm_ids[each.key]})"
+  mac        = lower(module.app_vms.mac_addresses[each.key][2])
+  name       = "${var.app_name}-${each.key}-${var.environment}-ext"
+  note       = "${var.app_name} ${each.key} ${var.environment} external NIC (VM ${module.app_vms.vm_ids[each.key]})"
   fixed_ip   = each.value
   network_id = data.unifi_network.external[0].id
 }
 
 # ---------------------------------------------------------------------------
-# DNS Records — A records for all IMP VMs + service aliases
+# DNS Records — A records for all VMs + service aliases
 # ---------------------------------------------------------------------------
 
 locals {
@@ -100,7 +100,7 @@ locals {
 resource "unifi_dns_record" "vault" {
   count = var.deploy_shared ? 1 : 0
 
-  name   = "imp-vault.${var.dns_domain}"
+  name   = "pw-vault.${var.dns_domain}"
   type   = "A"
   record = var.vault_ip
   ttl    = 300
@@ -118,18 +118,18 @@ resource "unifi_dns_record" "vault_alias" {
 resource "unifi_dns_record" "runner" {
   count = var.deploy_shared ? 1 : 0
 
-  name   = "imp-runner.${var.dns_domain}"
+  name   = "pw-runner.${var.dns_domain}"
   type   = "A"
   record = var.runner_ip
   ttl    = 300
 }
 
-# --- Environment VM host records (imp-client-dev, imp-server-dev, etc.) ---
+# --- Environment VM host records (app-client-dev, app-server-dev, etc.) ---
 
 resource "unifi_dns_record" "env_vms" {
   for_each = var.environment != "shared" ? var.vm_ips : {}
 
-  name   = "imp-${each.key}-${var.environment}.${var.dns_domain}"
+  name   = "${var.app_name}-${each.key}-${var.environment}.${var.dns_domain}"
   type   = "A"
   record = each.value
   ttl    = 300

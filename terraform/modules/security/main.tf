@@ -6,6 +6,12 @@ terraform {
   }
 }
 
+variable "app_name" {
+  description = "Application name for app-specific security group prefixes"
+  type        = string
+  default     = "imp"
+}
+
 variable "internal_cidr" {
   description = "Management subnet CIDR (VLAN 87)"
   type        = string
@@ -27,7 +33,7 @@ variable "env_cidrs" {
 # SSH from management network (rate limited via fail2ban on host)
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
-  name    = "imp-ssh"
+  name    = "pw-ssh"
   comment = "SSH from management network"
 
   rule {
@@ -57,7 +63,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
 # ICMP from management (health checks, diagnostics)
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "icmp" {
-  name    = "imp-icmp"
+  name    = "pw-icmp"
   comment = "ICMP ping from management and environment networks"
 
   rule {
@@ -84,7 +90,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "icmp" {
 # Node exporter metrics (Prometheus scraping)
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "monitoring" {
-  name    = "imp-monitoring"
+  name    = "pw-monitoring"
   comment = "Node exporter metrics from management network"
 
   rule {
@@ -101,7 +107,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "monitori
 # Vault API + cluster (management network only)
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "vault" {
-  name    = "imp-vault"
+  name    = "pw-vault"
   comment = "Vault server API and cluster ports"
 
   rule {
@@ -140,7 +146,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "vault" {
 # Web server (HTTP + HTTPS from anywhere — production ingress)
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "web" {
-  name    = "imp-web"
+  name    = "${var.app_name}-web"
   comment = "HTTP/HTTPS from any source (production ingress)"
 
   rule {
@@ -165,7 +171,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "web" {
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "app_env" {
   for_each = var.env_cidrs
-  name     = "imp-app-${each.key}"
+  name     = "${var.app_name}-app-${each.key}"
   comment  = "App server port from ${each.key} network"
 
   rule {
@@ -183,7 +189,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "app_env"
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "db_env" {
   for_each = var.env_cidrs
-  name     = "imp-db-${each.key}"
+  name     = "${var.app_name}-db-${each.key}"
   comment  = "MySQL from ${each.key} network"
 
   rule {
@@ -201,7 +207,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "db_env" 
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "minio_env" {
   for_each = var.env_cidrs
-  name     = "imp-minio-${each.key}"
+  name     = "${var.app_name}-minio-${each.key}"
   comment  = "MinIO from ${each.key} network"
 
   rule {
@@ -227,7 +233,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "minio_en
 # Orchestrator API (management network only)
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "orchestrator" {
-  name    = "imp-orchestrator"
+  name    = "pw-orchestrator"
   comment = "Orchestrator REST API from management network"
 
   rule {
@@ -244,7 +250,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "orchestr
 # Egress — Base (all VMs): DNS, NTP, HTTP/S, ICMP
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_base" {
-  name    = "imp-egress-base"
+  name    = "pw-egress-base"
   comment = "Base egress rules for all VMs (DNS, NTP, apt, ICMP)"
 
   rule {
@@ -299,7 +305,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_b
 # Egress — App server: DB, MinIO, Vault
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_app" {
-  name    = "imp-egress-app"
+  name    = "${var.app_name}-egress-app"
   comment = "App server egress (MySQL, MinIO, Vault)"
 
   rule {
@@ -331,7 +337,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_a
 # Egress — Client (nginx): proxy to app server
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_client" {
-  name    = "imp-egress-client"
+  name    = "${var.app_name}-egress-client"
   comment = "Client egress (proxy to app server)"
 
   rule {

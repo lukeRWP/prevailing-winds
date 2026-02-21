@@ -4,6 +4,7 @@
 module "security" {
   source        = "./modules/security"
   count         = var.manage_cluster_resources ? 1 : 0
+  app_name      = var.app_name
   internal_cidr = "10.0.5.0/24"
   env_cidrs = {
     mgmt = "10.0.5.0/24"
@@ -15,35 +16,35 @@ module "security" {
 
 locals {
   # Security group names are deterministic — safe to reference without the module.
-  # The sg_names map is a mix of flat strings and nested maps for per-env groups.
+  # Platform SGs use "pw-" prefix, app SGs use "${var.app_name}-" prefix.
   sg_names = var.manage_cluster_resources ? module.security[0].sg_names : {
-    ssh           = "imp-ssh"
-    icmp          = "imp-icmp"
-    monitoring    = "imp-monitoring"
-    vault         = "imp-vault"
-    web           = "imp-web"
-    orchestrator  = "imp-orchestrator"
-    egress_base   = "imp-egress-base"
-    egress_app    = "imp-egress-app"
-    egress_client = "imp-egress-client"
+    ssh           = "pw-ssh"
+    icmp          = "pw-icmp"
+    monitoring    = "pw-monitoring"
+    vault         = "pw-vault"
+    web           = "${var.app_name}-web"
+    orchestrator  = "pw-orchestrator"
+    egress_base   = "pw-egress-base"
+    egress_app    = "${var.app_name}-egress-app"
+    egress_client = "${var.app_name}-egress-client"
     # Per-environment groups
     app_env = {
-      mgmt = "imp-app-mgmt"
-      dev  = "imp-app-dev"
-      qa   = "imp-app-qa"
-      prod = "imp-app-prod"
+      mgmt = "${var.app_name}-app-mgmt"
+      dev  = "${var.app_name}-app-dev"
+      qa   = "${var.app_name}-app-qa"
+      prod = "${var.app_name}-app-prod"
     }
     db_env = {
-      mgmt = "imp-db-mgmt"
-      dev  = "imp-db-dev"
-      qa   = "imp-db-qa"
-      prod = "imp-db-prod"
+      mgmt = "${var.app_name}-db-mgmt"
+      dev  = "${var.app_name}-db-dev"
+      qa   = "${var.app_name}-db-qa"
+      prod = "${var.app_name}-db-prod"
     }
     minio_env = {
-      mgmt = "imp-minio-mgmt"
-      dev  = "imp-minio-dev"
-      qa   = "imp-minio-qa"
-      prod = "imp-minio-prod"
+      mgmt = "${var.app_name}-minio-mgmt"
+      dev  = "${var.app_name}-minio-dev"
+      qa   = "${var.app_name}-minio-qa"
+      prod = "${var.app_name}-minio-prod"
     }
   }
 }

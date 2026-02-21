@@ -1,6 +1,8 @@
-# IMP Infrastructure
+# PW Infrastructure
 
-Complete infrastructure documentation for the IMP (Expansions Management Platform) deployment system. This covers the full stack from hypervisor to application services.
+> **Note:** This document was written when IMP was the only managed app. References to `imp-` prefixed resources now use `pw-` for shared/platform resources and `${app_name}-` for app-specific resources. The default `app_name` is "imp".
+
+Complete infrastructure documentation for the Prevailing Winds (PW) deployment platform. This covers the full stack from hypervisor to application services.
 
 ---
 

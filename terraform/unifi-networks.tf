@@ -15,7 +15,7 @@ locals {
 resource "unifi_network" "env_vlans" {
   for_each = var.manage_cluster_resources ? local.env_vlans : {}
 
-  name    = "IMP-${upper(each.key)}"
+  name    = "${upper(var.app_name)}-${upper(each.key)}"
   purpose = "corporate"
 
   subnet       = each.value.subnet
@@ -23,5 +23,5 @@ resource "unifi_network" "env_vlans" {
   dhcp_enabled = true
   dhcp_start   = each.value.dhcp_start
   dhcp_stop    = each.value.dhcp_stop
-  domain_name  = "${each.key}.imp.local"
+  domain_name  = "${each.key}.${var.app_name}.local"
 }

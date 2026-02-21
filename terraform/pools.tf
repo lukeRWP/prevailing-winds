@@ -5,24 +5,24 @@
 
 resource "proxmox_virtual_environment_pool" "shared" {
   count   = var.manage_cluster_resources ? 1 : 0
-  pool_id = "imp-shared"
-  comment = "IMP shared infrastructure (Vault, Runner)"
+  pool_id = "pw-shared"
+  comment = "PW shared infrastructure (Vault, Runner, Orchestrator)"
 }
 
 resource "proxmox_virtual_environment_pool" "dev" {
   count   = var.manage_cluster_resources ? 1 : 0
-  pool_id = "imp-dev"
-  comment = "IMP dev environment"
+  pool_id = "${var.app_name}-dev"
+  comment = "${var.app_name} dev environment"
 }
 
 resource "proxmox_virtual_environment_pool" "qa" {
   count   = var.manage_cluster_resources ? 1 : 0
-  pool_id = "imp-qa"
-  comment = "IMP QA environment"
+  pool_id = "${var.app_name}-qa"
+  comment = "${var.app_name} QA environment"
 }
 
 resource "proxmox_virtual_environment_pool" "prod" {
   count   = var.manage_cluster_resources ? 1 : 0
-  pool_id = "imp-prod"
-  comment = "IMP production environment"
+  pool_id = "${var.app_name}-prod"
+  comment = "${var.app_name} production environment"
 }

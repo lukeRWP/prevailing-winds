@@ -1,11 +1,11 @@
 output "vm_ids" {
   description = "Map of VM roles to Proxmox VM IDs"
-  value       = module.imp_vms.vm_ids
+  value       = module.app_vms.vm_ids
 }
 
 output "mac_addresses" {
   description = "Map of VM roles to MAC addresses (for DHCP reservations)"
-  value       = module.imp_vms.mac_addresses
+  value       = module.app_vms.mac_addresses
 }
 
 output "vm_ips" {

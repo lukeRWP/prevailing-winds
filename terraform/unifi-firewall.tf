@@ -12,7 +12,7 @@
 resource "unifi_firewall_rule" "mgmt_to_envs" {
   for_each = var.manage_cluster_resources ? local.env_vlans : {}
 
-  name       = "IMP: mgmt to ${each.key}"
+  name       = "PW: mgmt to ${each.key}"
   action     = "accept"
   ruleset    = "LAN_IN"
   rule_index = 2000 + each.value.vlan_id
@@ -26,7 +26,7 @@ resource "unifi_firewall_rule" "mgmt_to_envs" {
 resource "unifi_firewall_rule" "envs_to_vault" {
   for_each = var.manage_cluster_resources ? local.env_vlans : {}
 
-  name       = "IMP: ${each.key} to vault"
+  name       = "PW: ${each.key} to vault"
   action     = "accept"
   ruleset    = "LAN_IN"
   rule_index = 2100 + each.value.vlan_id
@@ -52,10 +52,10 @@ resource "unifi_firewall_rule" "isolate_envs" {
   for_each = var.manage_cluster_resources ? toset(local.isolation_pairs) : toset([])
 
   # Parse src/dst from the key (e.g. "dev-to-prod")
-  name       = "IMP: block ${split("-to-", each.key)[0]} to ${split("-to-", each.key)[1]}"
+  name       = "PW: block ${split("-to-", each.key)[0]} to ${split("-to-", each.key)[1]}"
   action     = "drop"
   ruleset    = "LAN_IN"
-  
+
   # Use dense indexing starting at 2400
   rule_index = 2400 + index(local.isolation_pairs, each.key)
 

@@ -1,6 +1,8 @@
 # VLAN Migration Runbook — Dev (VLAN 87 → VLAN 100)
 
-Run all commands from `infra/terraform/` unless otherwise noted.
+> **Note:** This runbook was written for IMP as the first managed app. Resource prefixes have since been updated: shared resources use `pw-`, app resources use `${app_name}-` (default "imp").
+
+Run all commands from `terraform/` unless otherwise noted.
 
 ---
 

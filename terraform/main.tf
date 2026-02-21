@@ -1,6 +1,12 @@
-module "imp_vms" {
+moved {
+  from = module.imp_vms
+  to   = module.app_vms
+}
+
+module "app_vms" {
   source = "./modules/environment"
 
+  app_name              = var.app_name
   environment           = var.environment
   target_node           = var.target_node
   network_bridge        = var.network_bridge
@@ -9,7 +15,7 @@ module "imp_vms" {
   cloud_init_snippet_id = local.cloud_init_snippet_id
   security_groups       = local.sg_names
   env_vlan_tag          = var.env_vlan_tag
-  pool_id               = "imp-${var.environment}"
+  pool_id               = "${var.app_name}-${var.environment}"
   db_target_node        = var.environment == "prod" ? var.prod_db_node : ""
 }
 
@@ -22,7 +28,7 @@ module "vault" {
   source = "./modules/proxmox-vm"
   count  = var.deploy_shared ? 1 : 0
 
-  name                     = "imp-vault"
+  name                     = "pw-vault"
   target_node              = var.target_node
   cores                    = 2
   memory                   = 2048
@@ -31,9 +37,9 @@ module "vault" {
   template_id              = var.template_id
   ssh_public_key           = var.ssh_public_key
   vlan_tag                 = 87
-  tags                     = ["shared", "vault", "imp"]
+  tags                     = ["shared", "vault", "pw"]
   protection               = true
-  pool_id                  = "imp-shared"
+  pool_id                  = "pw-shared"
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
   firewall_security_groups = [
@@ -48,7 +54,7 @@ module "runner" {
   source = "./modules/proxmox-vm"
   count  = var.deploy_shared ? 1 : 0
 
-  name                     = "imp-runner"
+  name                     = "pw-runner"
   target_node              = var.target_node
   cores                    = 4
   memory                   = 8192
@@ -58,9 +64,9 @@ module "runner" {
   ssh_public_key           = var.ssh_public_key
   vlan_tag                 = 87
   additional_vlans         = [100, 110, 120]
-  tags                     = ["shared", "runner", "imp"]
+  tags                     = ["shared", "runner", "pw"]
   protection               = false
-  pool_id                  = "imp-shared"
+  pool_id                  = "pw-shared"
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
   firewall_security_groups = [
@@ -74,7 +80,7 @@ module "orchestrator" {
   source = "./modules/proxmox-vm"
   count  = var.deploy_shared ? 1 : 0
 
-  name                     = "imp-orchestrator"
+  name                     = "pw-orchestrator"
   target_node              = var.target_node
   cores                    = 4
   memory                   = 4096
@@ -84,9 +90,9 @@ module "orchestrator" {
   ssh_public_key           = var.ssh_public_key
   vlan_tag                 = 87
   additional_vlans         = [100, 110, 120]
-  tags                     = ["shared", "orchestrator", "imp"]
+  tags                     = ["shared", "orchestrator", "pw"]
   protection               = true
-  pool_id                  = "imp-shared"
+  pool_id                  = "pw-shared"
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
   firewall_security_groups = [

@@ -6,9 +6,9 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-BUCKET_NAME="${TF_STATE_BUCKET:-imp-terraform-state}"
+BUCKET_NAME="${TF_STATE_BUCKET:-pw-terraform-state}"
 REGION="${AWS_REGION:-us-east-1}"
-TABLE_NAME="${TF_LOCK_TABLE:-imp-terraform-locks}"
+TABLE_NAME="${TF_LOCK_TABLE:-pw-terraform-locks}"
 
 echo "==> Creating S3 bucket '${BUCKET_NAME}' in ${REGION}..."
 if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
@@ -72,5 +72,5 @@ fi
 echo ""
 echo "==> Done. Remote state backend is ready."
 echo "    Next steps:"
-echo "      cd infra/terraform"
+echo "      cd terraform"
 echo "      terraform init -migrate-state"

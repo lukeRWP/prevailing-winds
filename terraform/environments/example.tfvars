@@ -7,6 +7,7 @@
 #   qa     = VLAN 110 (10.0.110.0/24) — QA VMs
 #   prod   = VLAN 120 (10.0.120.0/24) — Prod VMs
 
+app_name     = "imp"
 environment  = "dev"
 target_node  = "prx002"
 env_vlan_tag = 100

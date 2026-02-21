@@ -6,7 +6,7 @@ Remaining infrastructure items from the security audit. These require environmen
 
 ## Critical
 
-- [ ] **INFRA-C5: Plaintext Proxmox API token and UniFi API key** — `infra/terraform/terraform.tfvars` contains plaintext secrets (gitignored, but on-disk unencrypted).
+- [ ] **INFRA-C5: Plaintext Proxmox API token and UniFi API key** — `terraform/terraform.tfvars` contains plaintext secrets (gitignored, but on-disk unencrypted).
   - Fix: Encrypt with `sops` or use environment variables. Add git-secrets pre-commit hook.
   - Effort: Medium
 
@@ -34,7 +34,7 @@ Remaining infrastructure items from the security audit. These require environmen
   - Fix: Implement cert rotation automation, add Prometheus alerting
   - Effort: Medium
 
-- [ ] **INFRA-M41: No offsite backup replication** — DB backups stored only on DB VM at `/opt/imp-db/backups/`. Disk failure loses data + backups.
+- [ ] **INFRA-M41: No offsite backup replication** — DB backups stored only on DB VM at `/opt/${app_name}-db/backups/`. Disk failure loses data + backups.
   - Fix: Automate replication to MinIO/S3
   - Effort: Medium
 

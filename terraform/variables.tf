@@ -1,3 +1,9 @@
+variable "app_name" {
+  description = "Application name — used as prefix for app-specific resources (VMs, pools, DNS, security groups)"
+  type        = string
+  default     = "imp"
+}
+
 variable "proxmox_api_url" {
   description = "Proxmox API endpoint"
   type        = string
@@ -136,19 +142,19 @@ variable "external_network_name" {
 }
 
 variable "vault_ip" {
-  description = "Fixed IP for imp-vault on VLAN 87"
+  description = "Fixed IP for Vault server on VLAN 87"
   type        = string
   default     = "10.0.5.40"
 }
 
 variable "runner_ip" {
-  description = "Fixed IP for imp-runner on VLAN 87"
+  description = "Fixed IP for GitHub Actions runner on VLAN 87"
   type        = string
   default     = "10.0.5.41"
 }
 
 variable "orchestrator_ip" {
-  description = "Fixed IP for imp-orchestrator on VLAN 87"
+  description = "Fixed IP for PW orchestrator on VLAN 87"
   type        = string
   default     = "10.0.5.42"
 }

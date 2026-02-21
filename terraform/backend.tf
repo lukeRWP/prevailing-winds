@@ -2,16 +2,16 @@
 # Remote State — S3-compatible backend (on-prem MinIO)
 # ---------------------------------------------------------------------------
 # Prerequisites:
-#   1. Create the MinIO bucket: mc mb minio/imp-terraform-state
-#   2. Enable object locking: mc retention set --default compliance 30d minio/imp-terraform-state
+#   1. Create the MinIO bucket: mc mb minio/pw-terraform-state
+#   2. Enable object locking: mc retention set --default compliance 30d minio/pw-terraform-state
 #   3. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars (MinIO creds)
 #   4. Run `terraform init -migrate-state` to move existing local state
 # ---------------------------------------------------------------------------
 
 terraform {
   backend "s3" {
-    bucket = "imp-terraform-state"
-    key    = "imp/terraform.tfstate"
+    bucket = "pw-terraform-state"
+    key    = "terraform.tfstate"
     region = "us-east-1"
 
     # MinIO S3-compatible endpoint on management VLAN

@@ -1,3 +1,8 @@
+variable "app_name" {
+  description = "Application name prefix for VM naming"
+  type        = string
+}
+
 variable "environment" { type = string }
 variable "target_node" { type = string }
 variable "network_bridge" { type = string }
@@ -103,7 +108,7 @@ module "vms" {
   source   = "../proxmox-vm"
   for_each = local.create_vms ? local.vm_specs : {}
 
-  name                              = "imp-${each.key}-${var.environment}"
+  name                              = "${var.app_name}-${each.key}-${var.environment}"
   target_node                       = each.key == "db" && var.db_target_node != "" ? var.db_target_node : var.target_node
   cores                             = each.value.cores
   memory                            = each.value.memory
@@ -113,7 +118,7 @@ module "vms" {
   ssh_public_key                    = var.ssh_public_key
   vlan_tag                          = var.env_vlan_tag
   external_vlan_tag                 = contains(local.external_roles, each.key) ? 7 : 0
-  tags                              = [var.environment, each.key, "imp"]
+  tags                              = [var.environment, each.key, var.app_name]
   protection                        = local.is_prod
   pool_id                           = var.pool_id
   cpu_type                          = "host"
