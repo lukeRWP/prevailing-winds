@@ -42,26 +42,29 @@ async function buildEnvironment(appName, envName, { ref, force = false } = {}) {
     logger.warn('lifecycle', `Cloud-init snippet upload failed (may already exist): ${err.message}`);
   }
 
-  // Steps 3-6 are queued and run serially via the operation queue
+  // Steps 3-7 are queued and run serially via the operation queue
   const ops = [];
 
-  // Step 3: Terraform apply (VMs, networking, firewall, DNS, DHCP)
+  // Step 3: Ensure cluster-level resources exist (security groups, pools, VLANs)
+  ops.push(await executor.enqueue(appName, envName, 'infra-apply-shared', { ref }));
+
+  // Step 4: Terraform apply (VMs, networking, firewall, DNS, DHCP)
   ops.push(await executor.enqueue(appName, envName, 'infra-apply', { ref }));
 
-  // Step 4: Ansible provision (OS hardening, MySQL, MinIO, app-server, nginx)
+  // Step 5: Ansible provision (OS hardening, MySQL, MinIO, app-server, nginx)
   ops.push(await executor.enqueue(appName, envName, 'provision', { ref }));
 
-  // Step 5: Database setup (create databases and schema)
+  // Step 6: Database setup (create databases and schema)
   ops.push(await executor.enqueue(appName, envName, 'db-setup', { ref }));
 
-  // Step 6: Deploy application
+  // Step 7: Deploy application
   ops.push(await executor.enqueue(appName, envName, 'deploy', { ref }));
 
   logger.info('lifecycle', `Build pipeline queued for ${appName}:${envName}: ${ops.length} operations`);
 
   return {
     operations: ops,
-    message: `Build pipeline queued: infra-apply → provision → db-setup → deploy`,
+    message: `Build pipeline queued: infra-shared → infra-apply → provision → db-setup → deploy`,
   };
 }
 
