@@ -317,12 +317,13 @@ function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
 
   // Build init + workspace select + action as a single shell command
   const cmds = [
-    'rm -rf .terraform .terraform.lock.hcl terraform.tfstate.d && terraform init -input=false',
+    'rm -rf .terraform .terraform.lock.hcl && terraform init -input=false',
     `terraform workspace select ${tfWorkspace} || terraform workspace new ${tfWorkspace}`,
   ];
 
   const actionArgs = [action];
   if (action === 'apply' || action === 'destroy') actionArgs.push('-auto-approve');
+  actionArgs.push('-input=false');
   if (fs.existsSync(path.join(tfDir, tfvarsFile))) {
     actionArgs.push(`-var-file=${tfvarsFile}`);
   }
@@ -331,7 +332,16 @@ function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
       actionArgs.push('-var', `${k}=${v}`);
     }
   }
-  cmds.push(`terraform ${actionArgs.join(' ')}`);
+  const tfCmd = `terraform ${actionArgs.join(' ')}`;
+
+  // Retry apply once — the Proxmox provider may not populate MAC addresses for
+  // single-NIC VMs on first create, causing dependent resources (DHCP) to fail.
+  // A second apply reads the MACs from the existing VMs and succeeds.
+  if (action === 'apply') {
+    cmds.push(`${tfCmd} || ${tfCmd}`);
+  } else {
+    cmds.push(tfCmd);
+  }
 
   return { cmd: '/bin/bash', args: ['-c', cmds.join(' && ')], cwd: tfDir };
 }
