@@ -59,7 +59,7 @@ resource "unifi_user" "runner" {
 resource "unifi_user" "env_vms" {
   for_each = var.environment != "shared" ? module.app_vms.vm_ids : {}
 
-  mac        = lower(module.app_vms.mac_addresses[each.key][1])
+  mac        = lower(module.app_vms.mac_addresses[each.key][0])
   name       = "${var.app_name}-${each.key}-${var.environment}"
   note       = "${var.app_name} ${each.key} ${var.environment} (VM ${each.value})"
   fixed_ip   = lookup(var.vm_ips, each.key, null)
@@ -74,7 +74,7 @@ resource "unifi_user" "env_vms" {
 resource "unifi_user" "env_vms_external" {
   for_each = var.environment != "shared" ? var.vm_external_ips : {}
 
-  mac        = lower(module.app_vms.mac_addresses[each.key][2])
+  mac        = lower(module.app_vms.mac_addresses[each.key][1])
   name       = "${var.app_name}-${each.key}-${var.environment}-ext"
   note       = "${var.app_name} ${each.key} ${var.environment} external NIC (VM ${module.app_vms.vm_ids[each.key]})"
   fixed_ip   = each.value
