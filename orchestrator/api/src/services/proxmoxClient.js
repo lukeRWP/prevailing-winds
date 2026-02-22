@@ -2,6 +2,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const config = require('../config');
 const vault = require('./vault');
 
 const CONTEXT = 'proxmox';
@@ -255,9 +256,187 @@ async function ensureCloudInitSnippet(targetNode, storage = 'local') {
   logger.info(CONTEXT, `Cloud-init snippet written successfully`);
 }
 
+/**
+ * Execute a command inside a VM via the QEMU guest agent.
+ * Returns { exitcode, outData, errData }.
+ */
+async function guestExec(node, vmid, command, inputData = '') {
+  const body = { command: '/bin/bash' };
+  if (inputData) body['input-data'] = inputData + '\n';
+
+  const result = await apiRequest('POST', `/nodes/${node}/qemu/${vmid}/agent/exec`, body);
+  const pid = result.pid;
+
+  // Poll for completion
+  const maxWait = 30000;
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const status = await apiRequest('GET', `/nodes/${node}/qemu/${vmid}/agent/exec-status?pid=${pid}`);
+      if (status.exited !== undefined) {
+        return {
+          exitcode: status.exitcode || 0,
+          outData: status['out-data'] || '',
+          errData: status['err-data'] || '',
+        };
+      }
+    } catch {
+      // Agent may not be ready yet
+    }
+  }
+  throw new Error(`Guest exec on VM ${vmid} timed out after ${maxWait / 1000}s`);
+}
+
+/**
+ * Wait for the QEMU guest agent to become responsive on a VM.
+ */
+async function waitForGuestAgent(node, vmid, maxWaitMs = 120000) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      await apiRequest('POST', `/nodes/${node}/qemu/${vmid}/agent/ping`);
+      return true;
+    } catch {
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+  throw new Error(`Guest agent on VM ${vmid} not responsive after ${maxWaitMs / 1000}s`);
+}
+
+/**
+ * Deploy SSH public key to a VM via the guest agent.
+ * Adds the key to both root and deploy users' authorized_keys.
+ */
+async function deploySSHKey(node, vmid, vmName, sshPublicKey) {
+  logger.info(CONTEXT, `Deploying SSH key to ${vmName} (VM ${vmid}) on ${node}`);
+
+  await waitForGuestAgent(node, vmid);
+
+  const script = [
+    `mkdir -p /root/.ssh /home/deploy/.ssh`,
+    `echo '${sshPublicKey}' >> /root/.ssh/authorized_keys`,
+    `echo '${sshPublicKey}' >> /home/deploy/.ssh/authorized_keys`,
+    `chown -R deploy:deploy /home/deploy/.ssh`,
+    `chmod 700 /root/.ssh /home/deploy/.ssh`,
+    `chmod 600 /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys`,
+    `echo 'SSH_KEY_DEPLOYED'`,
+  ].join(' && ');
+
+  const result = await guestExec(node, vmid, '/bin/bash', script);
+  if (!result.outData.includes('SSH_KEY_DEPLOYED')) {
+    throw new Error(`SSH key deploy failed on ${vmName}: ${result.errData || result.outData}`);
+  }
+
+  logger.info(CONTEXT, `SSH key deployed to ${vmName}`);
+}
+
+/**
+ * Reboot a VM and wait for it to come back online (guest agent responsive).
+ * Used after DHCP reservation is created to get the correct IP.
+ */
+async function rebootVM(node, vmid) {
+  logger.info(CONTEXT, `Rebooting VM ${vmid} on ${node}`);
+  await apiRequest('POST', `/nodes/${node}/qemu/${vmid}/status/reboot`);
+  // Wait a moment for the reboot to initiate
+  await new Promise((r) => setTimeout(r, 10000));
+  await waitForGuestAgent(node, vmid, 180000);
+  logger.info(CONTEXT, `VM ${vmid} back online after reboot`);
+}
+
+/**
+ * Prepare SSH access to all VMs in an environment.
+ * After infra-apply creates VMs and DHCP reservations:
+ * 1. Reboot VMs so they pick up DHCP-reserved IPs
+ * 2. Deploy the SSH public key via guest agent
+ * 3. Scan host keys and update orchestrator's known_hosts
+ */
+async function prepareVMAccess(appName, envName, envConfig, sshPublicKey) {
+  const vms = await findEnvironmentVMs(appName, envName, envConfig);
+  if (vms.length === 0) {
+    logger.warn(CONTEXT, `No VMs found for ${appName}:${envName} — skipping SSH prep`);
+    return { prepared: [], failed: [] };
+  }
+
+  logger.info(CONTEXT, `Preparing SSH access for ${vms.length} VMs in ${appName}:${envName}`);
+  const prepared = [];
+  const failed = [];
+
+  // Step 1: Deploy SSH key to all VMs via guest agent
+  for (const vm of vms) {
+    try {
+      await deploySSHKey(vm.node, vm.vmid, vm.name, sshPublicKey);
+      prepared.push(vm.name);
+    } catch (err) {
+      logger.error(CONTEXT, `Failed to deploy SSH key to ${vm.name}: ${err.message}`);
+      failed.push(vm.name);
+    }
+  }
+
+  // Step 2: Reboot VMs to pick up DHCP reservations
+  logger.info(CONTEXT, `Rebooting ${vms.length} VMs to pick up DHCP reservations`);
+  const rebootPromises = vms.map(async (vm) => {
+    try {
+      await rebootVM(vm.node, vm.vmid);
+    } catch (err) {
+      logger.warn(CONTEXT, `Reboot of ${vm.name} failed: ${err.message}`);
+    }
+  });
+  await Promise.all(rebootPromises);
+
+  // Step 3: Re-deploy SSH key after reboot (in case cloud-init resets authorized_keys)
+  for (const vm of vms) {
+    try {
+      await deploySSHKey(vm.node, vm.vmid, vm.name, sshPublicKey);
+    } catch (err) {
+      logger.warn(CONTEXT, `Post-reboot SSH key deploy failed for ${vm.name}: ${err.message}`);
+    }
+  }
+
+  // Step 4: Update known_hosts on orchestrator
+  const knownHostsPath = path.join(config.orchestratorHome, '.ssh', 'known_hosts');
+  const hosts = Object.values(envConfig.hosts || {}).map((h) => h.ip).filter(Boolean);
+
+  // Remove old entries
+  for (const ip of hosts) {
+    try {
+      const { spawn: sp } = require('child_process');
+      await new Promise((resolve) => {
+        const proc = sp('ssh-keygen', ['-R', ip], { stdio: 'ignore' });
+        proc.on('close', resolve);
+      });
+    } catch { /* ignore */ }
+  }
+
+  // Scan new host keys
+  const { spawn: sp } = require('child_process');
+  for (const ip of hosts) {
+    try {
+      await new Promise((resolve, reject) => {
+        const proc = sp('ssh-keyscan', ['-H', ip], { timeout: 10000 });
+        let out = '';
+        proc.stdout.on('data', (d) => { out += d; });
+        proc.on('close', (code) => {
+          if (code === 0 && out.trim()) {
+            fs.appendFileSync(knownHostsPath, out);
+            logger.info(CONTEXT, `Scanned host key for ${ip}`);
+          }
+          resolve();
+        });
+        proc.on('error', resolve);
+      });
+    } catch { /* ignore */ }
+  }
+
+  return { prepared, failed };
+}
+
 module.exports = {
   listVMs,
   findEnvironmentVMs,
   destroyEnvironmentVMs,
   ensureCloudInitSnippet,
+  prepareVMAccess,
+  guestExec,
+  waitForGuestAgent,
 };

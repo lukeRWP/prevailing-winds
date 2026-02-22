@@ -51,20 +51,23 @@ async function buildEnvironment(appName, envName, { ref, force = false } = {}) {
   // Step 4: Terraform apply (VMs, networking, firewall, DNS, DHCP)
   ops.push(await executor.enqueue(appName, envName, 'infra-apply', { ref }));
 
-  // Step 5: Ansible provision (OS hardening, MySQL, MinIO, app-server, nginx)
+  // Step 5: Prepare SSH access (deploy key via guest agent, reboot for DHCP, scan host keys)
+  ops.push(await executor.enqueue(appName, envName, 'prepare-ssh', { ref }));
+
+  // Step 6: Ansible provision (OS hardening, MySQL, MinIO, app-server, nginx)
   ops.push(await executor.enqueue(appName, envName, 'provision', { ref }));
 
-  // Step 6: Database setup (create databases and schema)
+  // Step 7: Database setup (create databases and schema)
   ops.push(await executor.enqueue(appName, envName, 'db-setup', { ref }));
 
-  // Step 7: Deploy application
+  // Step 8: Deploy application
   ops.push(await executor.enqueue(appName, envName, 'deploy', { ref }));
 
   logger.info('lifecycle', `Build pipeline queued for ${appName}:${envName}: ${ops.length} operations`);
 
   return {
     operations: ops,
-    message: `Build pipeline queued: infra-shared → infra-apply → provision → db-setup → deploy`,
+    message: `Build pipeline queued: infra-shared → infra-apply → prepare-ssh → provision → db-setup → deploy`,
   };
 }
 

@@ -11,6 +11,8 @@ const appRegistry = require('./appRegistry');
 const tfvarsGenerator = require('./tfvarsGenerator');
 const ansibleVarsGenerator = require('./ansibleVarsGenerator');
 
+const proxmoxClient = require('./proxmoxClient');
+
 const activeProcesses = new Map();
 const sseClients = new Map();
 const envLocks = new Map();
@@ -25,7 +27,11 @@ const INFRA_OPS = [
   'infra-plan-shared', 'infra-apply-shared',
   'db-setup', 'db-migrate', 'db-backup', 'db-seed', 'seed',
   'env-start', 'env-stop',
+  'prepare-ssh',
 ];
+
+// Inline operations handled directly (no child process spawn)
+const INLINE_OPS = ['prepare-ssh'];
 
 const TERRAFORM_OPS = ['infra-plan', 'infra-apply', 'infra-destroy', 'infra-plan-shared', 'infra-apply-shared'];
 const ANSIBLE_OPS = [
@@ -86,7 +92,7 @@ async function executeOperation(op) {
     }
 
     // Only checkout app repo for non-infrastructure operations
-    if (!TERRAFORM_OPS.includes(type)) {
+    if (!TERRAFORM_OPS.includes(type) && !INLINE_OPS.includes(type)) {
       const defaultBranch = manifest.environments?.[env]?.pipeline?.autoDeployBranch || 'master';
       await gitManager.ensureRepo(app, manifest.repo);
       const sha = await gitManager.pull(app, ref || defaultBranch);
@@ -117,6 +123,16 @@ async function executeOperation(op) {
 
     const childEnv = buildChildEnv({ infraSecrets, appSecrets, sshKeyPath, manifest, env });
     const parsedVars = typeof vars === 'string' ? JSON.parse(vars) : (vars || {});
+
+    // Inline operations — handled directly without spawning a child process
+    if (INLINE_OPS.includes(type)) {
+      await executeInlineOp(id, type, { app, env, manifest, infraSecrets, appSecrets });
+      queue.markSuccess(id);
+      emitSSE(id, { event: 'status', data: 'success' });
+      appendAndEmit(id, `[orchestrator] Operation completed successfully\n`);
+      if (op.callback_url) notifyCallback(op.callback_url, id, 'success').catch(() => {});
+      return;
+    }
 
     let cmd, args, cwd;
 
@@ -413,6 +429,32 @@ async function notifyCallback(url, opId, status, error) {
     req.end();
   } catch (err) {
     logger.warn('executor', `Callback notification failed: ${err.message}`);
+  }
+}
+
+async function executeInlineOp(opId, type, { app, env, manifest, infraSecrets, appSecrets }) {
+  switch (type) {
+    case 'prepare-ssh': {
+      const envConfig = manifest.environments?.[env];
+      if (!envConfig) throw new Error(`No environment config for ${app}:${env}`);
+
+      const sshPublicKey = infraSecrets.ssh_public_key || appSecrets.ssh_public_key;
+      if (!sshPublicKey) throw new Error('No SSH public key found in Vault (ssh_public_key)');
+
+      appendAndEmit(opId, `[orchestrator] Preparing SSH access for ${app}:${env} VMs...\n`);
+      appendAndEmit(opId, `[orchestrator] Will: deploy SSH key via guest agent → reboot for DHCP → re-deploy key → scan host keys\n`);
+
+      const result = await proxmoxClient.prepareVMAccess(app, env, envConfig, sshPublicKey);
+
+      appendAndEmit(opId, `[orchestrator] SSH prepared: ${result.prepared.join(', ') || 'none'}\n`);
+      if (result.failed.length > 0) {
+        appendAndEmit(opId, `[orchestrator] SSH failed: ${result.failed.join(', ')}\n`);
+        throw new Error(`SSH key deployment failed for: ${result.failed.join(', ')}`);
+      }
+      break;
+    }
+    default:
+      throw new Error(`Unknown inline operation: ${type}`);
   }
 }
 
