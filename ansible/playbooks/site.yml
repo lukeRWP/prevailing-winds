@@ -65,7 +65,7 @@
   tasks:
     - name: Remove {{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }} staging directory
       file:
-        path: {{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}
+        path: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}"
         state: absent
 
 # -----------------------------------------------------------------------
