@@ -43,7 +43,7 @@
   always:
     - name: Remove temporary SSL certs from Ansible controller
       file:
-        path: {{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}
+        path: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}"
         state: absent
       delegate_to: localhost
       become: no

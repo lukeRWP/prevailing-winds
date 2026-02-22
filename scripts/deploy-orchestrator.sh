@@ -68,6 +68,10 @@ TFEOF
   echo "Created local backend.tf (first deploy)"
 fi
 
+# Install Ansible collections
+echo "Installing Ansible collections..."
+"${ORCH_HOME}/venv/bin/ansible-galaxy" collection install -r "${ORCH_HOME}/ansible/requirements.yml" 2>&1
+
 # Ensure required directories exist
 mkdir -p "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible/tmp"
 
