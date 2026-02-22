@@ -252,5 +252,5 @@ output "vm_id" {
 }
 
 output "mac_address" {
-  value = proxmox_virtual_environment_vm.vm.mac_addresses
+  value = proxmox_virtual_environment_vm.vm.network_device[*].mac_address
 }
