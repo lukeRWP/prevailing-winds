@@ -214,9 +214,7 @@ async function destroyEnvironmentVMs(appName, envName, envConfig) {
  * Uses SSH to write the file since the Proxmox API doesn't support snippet uploads.
  */
 async function ensureCloudInitSnippet(targetNode, storage = 'local') {
-  const { execFile } = require('child_process');
-  const { promisify } = require('util');
-  const execFileAsync = promisify(execFile);
+  const { spawn } = require('child_process');
 
   const { apiUrl } = await getCredentials();
   const proxmoxHost = new URL(apiUrl).hostname;
@@ -228,7 +226,7 @@ async function ensureCloudInitSnippet(targetNode, storage = 'local') {
 
   logger.info(CONTEXT, `Writing cloud-init snippet to ${proxmoxHost}:${remotePath} via SSH`);
 
-  const sshCmd = [
+  const sshArgs = [
     '-o', 'StrictHostKeyChecking=no',
     '-o', 'BatchMode=yes',
     '-o', 'ConnectTimeout=5',
@@ -237,8 +235,23 @@ async function ensureCloudInitSnippet(targetNode, storage = 'local') {
     `mkdir -p ${snippetDir} && cat > ${remotePath}`,
   ];
 
-  const { stderr } = await execFileAsync('ssh', sshCmd, { input: content, timeout: 15000 });
-  if (stderr) logger.warn(CONTEXT, `SSH stderr: ${stderr}`);
+  await new Promise((resolve, reject) => {
+    const proc = spawn('ssh', sshArgs, { timeout: 15000 });
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d; });
+    proc.on('close', (code) => {
+      if (code === 0) {
+        if (stderr) logger.warn(CONTEXT, `SSH stderr: ${stderr}`);
+        resolve();
+      } else {
+        reject(new Error(`SSH snippet upload failed (code ${code}): ${stderr}`));
+      }
+    });
+    proc.on('error', (err) => reject(err));
+    proc.stdin.write(content);
+    proc.stdin.end();
+  });
+
   logger.info(CONTEXT, `Cloud-init snippet written successfully`);
 }
 
