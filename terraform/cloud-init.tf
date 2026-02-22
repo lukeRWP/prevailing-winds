@@ -1,18 +1,9 @@
-# Cloud-init snippet — only uploaded from the shared workspace.
-# Environment workspaces reference the existing snippet by its known path.
-
-resource "proxmox_virtual_environment_file" "cloud_init_base" {
-  count        = var.manage_cluster_resources ? 1 : 0
-  content_type = "snippets"
-  datastore_id = var.cloud_init_datastore
-  node_name    = var.target_node
-
-  source_raw {
-    data      = file("${path.module}/templates/cloud-init-base.yml")
-    file_name = "pw-cloud-init-base.yml"
-  }
-}
+# Cloud-init snippet — uploaded via lifecycle orchestrator's Proxmox API call.
+# The bpg/proxmox provider's file upload uses SSH which can timeout on slow
+# connections. The orchestrator handles this reliably via the REST API instead.
+#
+# Environment workspaces reference the snippet by its known path.
 
 locals {
-  cloud_init_snippet_id = var.manage_cluster_resources ? proxmox_virtual_environment_file.cloud_init_base[0].id : "${var.cloud_init_datastore}:snippets/pw-cloud-init-base.yml"
+  cloud_init_snippet_id = "${var.cloud_init_datastore}:snippets/pw-cloud-init-base.yml"
 }
