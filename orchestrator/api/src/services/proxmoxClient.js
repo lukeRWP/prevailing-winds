@@ -46,12 +46,12 @@ async function apiRequest(method, apiPath, body = null) {
     agent,
     headers: {
       'Authorization': `PVEAPIToken=${apiToken}`,
-      'Content-Type': 'application/json',
     },
   };
 
   const payload = body ? JSON.stringify(body) : null;
   if (payload) {
+    options.headers['Content-Type'] = 'application/json';
     options.headers['Content-Length'] = Buffer.byteLength(payload);
   }
 
