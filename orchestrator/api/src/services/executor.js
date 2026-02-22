@@ -318,9 +318,21 @@ function buildAnsibleCmd(infraDir, _playbook, env, manifest, vars, tag) {
 
   const args = [playbookPath, '-i', inventoryPath, '--become'];
 
-  if (vars && Object.keys(vars).length > 0) {
-    args.push('-e', JSON.stringify(vars));
-  }
+  // Ansible core 2.20+ evaluates hosts: directives before loading group_vars,
+  // so group mapping variables (group_servers, group_databases, etc.) must be
+  // passed as extra-vars to be available at parse time.
+  const appName = manifest.name;
+  const groupVars = {
+    app_name: appName,
+    group_servers: `${appName}_servers`,
+    group_clients: `${appName}_clients`,
+    group_databases: `${appName}_databases`,
+    group_storage: `${appName}_storage`,
+    group_monitoring: `${appName}_monitoring`,
+    group_runner: `${appName}_runner`,
+  };
+  const mergedVars = { ...groupVars, ...(vars || {}) };
+  args.push('-e', JSON.stringify(mergedVars));
 
   return { cmd: ansibleBin, args, cwd: ansibleDir };
 }
