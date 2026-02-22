@@ -312,7 +312,7 @@ function buildAnsibleCmd(infraDir, _playbook, env, manifest, vars, tag) {
 function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
   const tfDir = path.join(infraDir, 'terraform');
   const envConfig = manifest.environments && manifest.environments[workspace];
-  const tfWorkspace = envConfig ? (envConfig.terraformWorkspace || workspace) : 'default';
+  const tfWorkspace = envConfig ? (envConfig.terraformWorkspace || workspace) : workspace;
   const tfvarsFile = path.join('environments', `${workspace}.tfvars`);
 
   // Build init + workspace select + action as a single shell command

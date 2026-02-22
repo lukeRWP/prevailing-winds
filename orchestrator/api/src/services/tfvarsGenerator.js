@@ -60,7 +60,8 @@ async function generateTfvars(appName, envName) {
   return vars;
 }
 
-function generateSharedTfvars(appName) {
+async function generateSharedTfvars(appName) {
+  const infraSecrets = await vault.readSecret('secret/data/pw/infra') || {};
   return {
     app_name: appName || 'imp',
     environment: 'shared',
@@ -68,6 +69,8 @@ function generateSharedTfvars(appName) {
     manage_cluster_resources: true,
     env_vlan_tag: 87,
     env_cidr: '10.0.5.0/24',
+    ssh_public_key: infraSecrets.ssh_public_key || '',
+    proxmox_api_url: infraSecrets.proxmox_api_url || '',
   };
 }
 
@@ -97,7 +100,7 @@ function formatTfvars(vars) {
 async function writeTfvars(appName, envName) {
   const isShared = envName === 'shared';
   const vars = isShared
-    ? generateSharedTfvars(appName)
+    ? await generateSharedTfvars(appName)
     : await generateTfvars(appName, envName);
 
   const content = formatTfvars(vars);
