@@ -132,7 +132,7 @@
 - name: Fetch MySQL client SSL certificates to controller
   fetch:
     src: "{{ mysql_ssl_dir }}/{{ item }}"
-    dest: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ inventory_hostname }}/"
+    dest: "{{ ssl_staging_dir | default('/tmp/ansible-staging/ssl-certs') }}/{{ inventory_hostname }}/"
     flat: yes
   loop:
     - ca.pem

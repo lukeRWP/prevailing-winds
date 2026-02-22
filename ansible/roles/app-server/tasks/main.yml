@@ -18,7 +18,7 @@
   block:
     - name: Deploy MySQL client SSL certificates
       copy:
-        src: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ hostvars[groups[group_databases][0]].inventory_hostname }}/{{ item.name }}"
+        src: "{{ ssl_staging_dir | default('/tmp/ansible-staging/ssl-certs') }}/{{ hostvars[groups[group_databases][0]].inventory_hostname }}/{{ item.name }}"
         dest: "{{ app_server_shared_dir }}/mysql-ssl/{{ item.name }}"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
@@ -32,7 +32,7 @@
 
     - name: Deploy MinIO TLS certificate for Node.js trust
       copy:
-        src: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}/{{ hostvars[groups[group_storage][0]].inventory_hostname }}/public.crt"
+        src: "{{ ssl_staging_dir | default('/tmp/ansible-staging/ssl-certs') }}/{{ hostvars[groups[group_storage][0]].inventory_hostname }}/public.crt"
         dest: "{{ app_server_shared_dir }}/minio-ca.crt"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
@@ -43,7 +43,7 @@
   always:
     - name: Remove temporary SSL certs from Ansible controller
       file:
-        path: "{{ ssl_staging_dir | default('/run/ansible-staging/ssl-certs') }}"
+        path: "{{ ssl_staging_dir | default('/tmp/ansible-staging/ssl-certs') }}"
         state: absent
       delegate_to: localhost
       become: no
