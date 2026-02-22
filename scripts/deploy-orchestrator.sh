@@ -68,11 +68,11 @@ TFEOF
   echo "Created local backend.tf (first deploy)"
 fi
 
-# Ensure certs directory exists
-mkdir -p "${ORCH_HOME}/certs"
+# Ensure required directories exist
+mkdir -p "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible/tmp"
 
 # Fix ownership
-chown -R orchestrator:orchestrator "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs"
+chown -R orchestrator:orchestrator "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible"
 
 # Restart service
 echo "Restarting orchestrator service..."
