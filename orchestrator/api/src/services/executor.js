@@ -317,7 +317,7 @@ function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
 
   // Build init + workspace select + action as a single shell command
   const cmds = [
-    'rm -rf .terraform .terraform.lock.hcl && terraform init -input=false -reconfigure',
+    'terraform init -input=false -upgrade',
     `terraform workspace select ${tfWorkspace} || terraform workspace new ${tfWorkspace}`,
   ];
 
