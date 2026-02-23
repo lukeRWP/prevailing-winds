@@ -332,6 +332,7 @@ function buildAnsibleCmd(infraDir, _playbook, env, manifest, vars, tag) {
     group_monitoring: `${appName}_monitoring`,
     group_runner: `${appName}_runner`,
     sql_init_dir: path.join(appRepoDir, 'SQL'),
+    db_migrations_path: path.join(appRepoDir, 'SQL', 'migrations'),
   };
   const mergedVars = { ...groupVars, ...(vars || {}) };
   args.push('-e', JSON.stringify(mergedVars));
