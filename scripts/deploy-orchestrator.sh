@@ -56,19 +56,16 @@ rsync -a --delete \
   --exclude='backend.tf' \
   "${PW_REPO}/terraform/" "${ORCH_HOME}/terraform/"
 
-# Local backend for orchestrator — S3 backend requires MinIO which lives on an
+# Always write local backend — S3 backend requires MinIO which lives on an
 # environment VLAN that may be destroyed. Local state is backed up by the
 # orchestrator's persistent disk. The repo has an S3 backend for developer use.
-if [ ! -f "${ORCH_HOME}/terraform/backend.tf" ]; then
-  cat > "${ORCH_HOME}/terraform/backend.tf" <<'TFEOF'
+cat > "${ORCH_HOME}/terraform/backend.tf" <<'TFEOF'
 terraform {
   backend "local" {
     path = "/opt/orchestrator/data/terraform.tfstate"
   }
 }
 TFEOF
-  echo "Created local backend.tf (first deploy)"
-fi
 
 # Install Ansible collections
 echo "Installing Ansible collections..."
