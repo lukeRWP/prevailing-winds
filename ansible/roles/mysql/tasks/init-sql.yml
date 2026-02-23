@@ -1,7 +1,7 @@
 ---
 - name: Copy SQL init files
   copy:
-    src: "{{ playbook_dir }}/../../../SQL/"
+    src: "{{ sql_init_dir | default(playbook_dir + '/../../../SQL') }}/"
     dest: "/tmp/{{ app_name }}-sql/"
     mode: "0644"
 

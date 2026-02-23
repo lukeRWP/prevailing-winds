@@ -322,6 +322,7 @@ function buildAnsibleCmd(infraDir, _playbook, env, manifest, vars, tag) {
   // so group mapping variables (group_servers, group_databases, etc.) must be
   // passed as extra-vars to be available at parse time.
   const appName = manifest.name;
+  const appRepoDir = path.join(config.reposDir, appName);
   const groupVars = {
     app_name: appName,
     group_servers: `${appName}_servers`,
@@ -330,6 +331,7 @@ function buildAnsibleCmd(infraDir, _playbook, env, manifest, vars, tag) {
     group_storage: `${appName}_storage`,
     group_monitoring: `${appName}_monitoring`,
     group_runner: `${appName}_runner`,
+    sql_init_dir: path.join(appRepoDir, 'SQL'),
   };
   const mergedVars = { ...groupVars, ...(vars || {}) };
   args.push('-e', JSON.stringify(mergedVars));
