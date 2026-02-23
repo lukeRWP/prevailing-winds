@@ -59,10 +59,14 @@ rsync -a --delete \
 # Always write local backend — S3 backend requires MinIO which lives on an
 # environment VLAN that may be destroyed. Local state is backed up by the
 # orchestrator's persistent disk. The repo has an S3 backend for developer use.
+# workspace_dir must be set so named workspace state lives alongside the state
+# file (in /opt/orchestrator/data/) instead of the terraform working directory.
+mkdir -p "${ORCH_HOME}/data/terraform.tfstate.d"
 cat > "${ORCH_HOME}/terraform/backend.tf" <<'TFEOF'
 terraform {
   backend "local" {
-    path = "/opt/orchestrator/data/terraform.tfstate"
+    path          = "/opt/orchestrator/data/terraform.tfstate"
+    workspace_dir = "/opt/orchestrator/data/terraform.tfstate.d"
   }
 }
 TFEOF
