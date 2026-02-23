@@ -12,6 +12,7 @@
     - "{{ app_server_shared_dir }}"
     - "{{ app_server_shared_dir }}/mysql-ssl"
     - "{{ app_server_shared_dir }}/tessdata"
+    - "/home/{{ deploy_user }}/.pm2"
 
 # --- Deploy SSL certs fetched to controller, then clean up temp files ---
 - name: Deploy SSL certificates from controller staging area
