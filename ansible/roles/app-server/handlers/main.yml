@@ -7,3 +7,10 @@
   service:
     name: "{{ app_server_service_name }}"
     state: restarted
+  failed_when: false
+  register: _app_restart
+
+- name: note app-server restart skipped
+  debug:
+    msg: "App server restart skipped (service not yet deployed)"
+  when: _app_restart is failed
