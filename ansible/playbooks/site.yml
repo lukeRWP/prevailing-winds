@@ -62,6 +62,7 @@
 - name: Clean up temporary SSL certs on controller
   hosts: localhost
   connection: local
+  become: no
   gather_facts: no
   tasks:
     - name: Remove {{ ssl_staging_dir | default('/tmp/ansible-staging/ssl-certs') }} staging directory
