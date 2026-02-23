@@ -83,6 +83,8 @@
 - name: Harden sudoers — scope deploy user to required commands
   hosts: all
   become: yes
+  vars:
+    deploy_user: deploy
   tags:
     - post-provision
   tasks:
@@ -92,12 +94,12 @@
         dest: "/etc/sudoers.d/{{ deploy_user }}"
         mode: "0440"
         validate: "visudo -cf %s"
-      vars:
-        deploy_user: "{{ deploy_user | default('deploy') }}"
 
 - name: Harden sudoers — scope runner user to required commands
   hosts: "{{ group_runner }}"
   become: yes
+  vars:
+    runner_user: runner
   tags:
     - post-provision
   tasks:
@@ -107,5 +109,3 @@
         dest: "/etc/sudoers.d/{{ runner_user }}"
         mode: "0440"
         validate: "visudo -cf %s"
-      vars:
-        runner_user: "{{ runner_user | default('runner') }}"
