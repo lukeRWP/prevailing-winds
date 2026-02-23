@@ -34,12 +34,13 @@ mysql_schema_prefix: "IMP_"
 # SSL certificate identity
 mysql_ssl_org: "{{ app_name | upper }}"
 
-# Credentials from Vault (set via playbook vars)
-mysql_root_password: ""
-mysql_app_user: "{{ app_name }}_api_001"
-mysql_app_password: ""
-mysql_ssl_user: "{{ app_name }}_ssl_user"
-mysql_ssl_password: ""
+# Credentials — bridge from vault_* group_vars (set by orchestrator's
+# ansibleVarsGenerator) to the role's native variable names.
+mysql_root_password: "{{ vault_mysql_root_password | default('') }}"
+mysql_app_user: "{{ vault_mysql_user | default(app_name + '_api_001') }}"
+mysql_app_password: "{{ vault_mysql_password | default('') }}"
+mysql_ssl_user: "{{ vault_mysql_ssl_user | default(app_name + '_ssl_user') }}"
+mysql_ssl_password: "{{ vault_mysql_ssl_password | default('') }}"
 
 # Init flag
 mysql_init_databases: false

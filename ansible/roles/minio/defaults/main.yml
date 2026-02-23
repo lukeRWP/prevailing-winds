@@ -8,5 +8,6 @@ minio_config_dir: /etc/minio
 minio_port: 9000
 minio_console_port: 9001
 minio_bucket: "{{ app_name }}-files"
-minio_access_key: ""
-minio_secret_key: ""
+# Bridge from vault_* group_vars to role variable names
+minio_access_key: "{{ vault_s3_access_key | default('') }}"
+minio_secret_key: "{{ vault_s3_secret_key | default('') }}"
