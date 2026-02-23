@@ -213,37 +213,33 @@
   loop: "{{ mysql_databases }}"
   when: mysql_init_databases | bool
 
-- name: Create application user
-  mysql_user:
-    name: "{{ mysql_app_user }}"
-    password: "{{ mysql_app_password }}"
-    host: "{{ app_server_ip | default('%') }}"
-    plugin: caching_sha2_password
-    update_password: always
-    priv: "{{ mysql_databases | map('regex_replace', '^(.*)$', '\\1.*:SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES') | join('/') }}"
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_user: root
-    login_password: "{{ mysql_root_password }}"
-    state: present
+- name: Create or update application user via SQL
+  shell: |
+    mysql --defaults-file=/root/.my.cnf -e "
+      CREATE USER IF NOT EXISTS '{{ mysql_app_user }}'@'{{ app_server_ip | default('%') }}' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_app_password }}';
+      ALTER USER '{{ mysql_app_user }}'@'{{ app_server_ip | default('%') }}' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_app_password }}';
+      {% for db in mysql_databases %}
+      GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES ON \`{{ db }}\`.* TO '{{ mysql_app_user }}'@'{{ app_server_ip | default('%') }}';
+      {% endfor %}
+      FLUSH PRIVILEGES;
+    "
   when: mysql_init_databases | bool and mysql_app_password != ""
   no_log: true
+  changed_when: true
 
-- name: Create SSL user
-  mysql_user:
-    name: "{{ mysql_ssl_user }}"
-    password: "{{ mysql_ssl_password }}"
-    host: "{{ app_server_ip | default('%') }}"
-    plugin: caching_sha2_password
-    update_password: always
-    priv: "{{ mysql_databases | map('regex_replace', '^(.*)$', '\\1.*:SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES') | join('/') }}"
-    tls_requires:
-      ssl:
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_user: root
-    login_password: "{{ mysql_root_password }}"
-    state: present
+- name: Create or update SSL user via SQL
+  shell: |
+    mysql --defaults-file=/root/.my.cnf -e "
+      CREATE USER IF NOT EXISTS '{{ mysql_ssl_user }}'@'{{ app_server_ip | default('%') }}' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_ssl_password }}' REQUIRE SSL;
+      ALTER USER '{{ mysql_ssl_user }}'@'{{ app_server_ip | default('%') }}' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_ssl_password }}' REQUIRE SSL;
+      {% for db in mysql_databases %}
+      GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES ON \`{{ db }}\`.* TO '{{ mysql_ssl_user }}'@'{{ app_server_ip | default('%') }}';
+      {% endfor %}
+      FLUSH PRIVILEGES;
+    "
   when: mysql_init_databases | bool and mysql_ssl_password != ""
   no_log: true
+  changed_when: true
 
 - name: Run init SQL files
   include_tasks: init-sql.yml
