@@ -45,16 +45,23 @@ function init() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_ops_status ON operations (status)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_ops_created ON operations (created_at DESC)`);
 
+  // Add columns for audit trail (graceful migration — ignore if already exist)
+  const addColumn = (col, type) => {
+    try { db.exec(`ALTER TABLE operations ADD COLUMN ${col} ${type}`); } catch { /* already exists */ }
+  };
+  addColumn('duration_ms', 'INTEGER');
+  addColumn('initiated_by', 'TEXT');
+
   logger.info('queue', 'Operation queue initialized');
 }
 
-function create({ app, env, type, ref, vars, callbackUrl }) {
+function create({ app, env, type, ref, vars, callbackUrl, initiatedBy }) {
   const id = uuidv4();
   const stmt = db.prepare(`
-    INSERT INTO operations (id, app, env, type, status, ref, vars, callback_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO operations (id, app, env, type, status, ref, vars, callback_url, initiated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(id, app, env || null, type, STATUSES.QUEUED, ref || null, vars ? JSON.stringify(vars) : null, callbackUrl || null);
+  stmt.run(id, app, env || null, type, STATUSES.QUEUED, ref || null, vars ? JSON.stringify(vars) : null, callbackUrl || null, initiatedBy || null);
   return id;
 }
 
@@ -84,13 +91,19 @@ function markRunning(id) {
 }
 
 function markSuccess(id) {
-  db.prepare(`UPDATE operations SET status = ?, completed_at = datetime('now') WHERE id = ?`)
-    .run(STATUSES.SUCCESS, id);
+  db.prepare(`
+    UPDATE operations SET status = ?, completed_at = datetime('now'),
+    duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER)
+    WHERE id = ?
+  `).run(STATUSES.SUCCESS, id);
 }
 
 function markFailed(id, errorMsg) {
-  db.prepare(`UPDATE operations SET status = ?, completed_at = datetime('now'), error = ? WHERE id = ?`)
-    .run(STATUSES.FAILED, errorMsg, id);
+  db.prepare(`
+    UPDATE operations SET status = ?, completed_at = datetime('now'), error = ?,
+    duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER)
+    WHERE id = ?
+  `).run(STATUSES.FAILED, errorMsg, id);
 }
 
 function cancel(id) {

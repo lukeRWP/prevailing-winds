@@ -63,12 +63,19 @@ function generateInventory(appName, envName) {
  * Write the generated inventory to the repo's inventories directory.
  * Creates the directory structure if it doesn't exist.
  */
-function writeInventory(appName, envName, repoPath) {
+function writeInventory(appName, envName, repoPath, { inventoryBaseDir } = {}) {
   const inventory = generateInventory(appName, envName);
 
-  const app = appRegistry.get(appName);
-  const infraPath = app.infraPath || 'infra';
-  const inventoryDir = path.join(repoPath, infraPath, 'ansible', 'inventories', envName);
+  let inventoryDir;
+  if (inventoryBaseDir) {
+    // Direct path — used by lifecycle orchestrator (PW repo layout)
+    inventoryDir = path.join(inventoryBaseDir, envName);
+  } else {
+    // Derived from app manifest infraPath — used by API endpoint
+    const app = appRegistry.get(appName);
+    const infraPath = app.infraPath || 'infra';
+    inventoryDir = path.join(repoPath, infraPath, 'ansible', 'inventories', envName);
+  }
 
   // Create directory structure
   fs.mkdirSync(inventoryDir, { recursive: true });

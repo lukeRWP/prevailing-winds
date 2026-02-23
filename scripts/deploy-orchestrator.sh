@@ -56,16 +56,35 @@ rsync -a --delete \
   --exclude='backend.tf' \
   "${PW_REPO}/terraform/" "${ORCH_HOME}/terraform/"
 
-# Ensure backend.tf exists (local backend for orchestrator; repo has S3 backend for MinIO)
-if [ ! -f "${ORCH_HOME}/terraform/backend.tf" ]; then
-  cat > "${ORCH_HOME}/terraform/backend.tf" <<'TFEOF'
+# Deploy S3 backend.tf for MinIO-backed state (matches repo backend but uses management-reachable IP)
+# The orchestrator on VLAN 87 reaches MinIO at 10.0.100.13 via cross-VLAN routing.
+# AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are set by executor from Vault secrets.
+# AWS_CA_BUNDLE is set by executor to trust MinIO's self-signed cert.
+cat > "${ORCH_HOME}/terraform/backend.tf" <<'TFEOF'
 terraform {
-  backend "local" {
-    path = "/opt/orchestrator/data/terraform.tfstate"
+  backend "s3" {
+    bucket = "pw-terraform-state"
+    key    = "terraform.tfstate"
+    region = "us-east-1"
+
+    endpoints = {
+      s3 = "https://10.0.100.13:9000"
+    }
+
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+    use_path_style              = true
+    use_lockfile                = true
   }
 }
 TFEOF
-  echo "Created local backend.tf (first deploy)"
+echo "Deployed S3 backend.tf (MinIO-backed state)"
+
+# Migrate existing local state to S3 if local state file exists
+if [ -f "${ORCH_HOME}/data/terraform.tfstate" ]; then
+  echo "Local state file found — migration to S3 will happen on next terraform init"
 fi
 
 # Install Ansible collections

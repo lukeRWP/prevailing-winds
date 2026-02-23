@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
 const config = require('../config');
 
@@ -16,9 +18,17 @@ async function initVault() {
       apiVersion: 'v1',
       endpoint: config.vault.addr,
     };
-    // Only disable SSL verification for HTTPS endpoints
+    // Use CA cert for TLS verification if available, otherwise fall back to insecure
     if (config.vault.addr.startsWith('https')) {
-      vaultOpts.requestOptions = { strictSSL: false };
+      const vaultCaCertPath = path.join(config.orchestratorHome, 'certs', 'vault-ca.crt');
+      if (fs.existsSync(vaultCaCertPath)) {
+        vaultOpts.requestOptions = {
+          ca: fs.readFileSync(vaultCaCertPath),
+          strictSSL: true,
+        };
+      } else {
+        vaultOpts.requestOptions = { strictSSL: false };
+      }
     }
     const vault = require('node-vault')(vaultOpts);
 

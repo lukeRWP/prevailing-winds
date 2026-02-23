@@ -51,6 +51,26 @@
       run_once: true
 
 # --- Build app_env_vars from infrastructure when not provided ---
+# Database env vars come from the manifest via orchestrator extra-vars (app_db_env_vars).
+# Defaults kept for backward compat with manual Ansible runs.
+- name: Set default database env vars (overridden by orchestrator)
+  set_fact:
+    _db_env_defaults:
+      MAIN_DATABASE: "IMP_PROJECTS"
+      PROJECT_DB: "IMP_PROJECTS"
+      PROGRAM_DB: "IMP_PROGRAMS"
+      LOCATION_DB: "IMP_LOCATIONS"
+      USER_DB: "IMP_USERS"
+      MILESTONE_DB: "IMP_MILESTONES"
+      CAPITAL_DB: "IMP_CAPITAL"
+      ADMIN_DB: "IMP_ADMIN"
+      REPORTING_DB: "IMP_REPORTING"
+      ANALYTICS_DB: "IMP_ANALYTICS"
+      IMPORT_DB: "IMP_IMPORTS"
+      EXPORT_DB: "IMP_EXPORTS"
+      FILES_DB: "IMP_FILES"
+      NOTES_DB: "IMP_NOTES"
+
 - name: Build app_env_vars from infrastructure vars
   set_fact:
     app_env_vars: >-
@@ -67,20 +87,6 @@
           'MYSQL_SSL_USER': vault_mysql_ssl_user,
           'MYSQL_SSL_PASSWORD': vault_mysql_ssl_password,
           'MYSQL_SSL_PATH': app_server_shared_dir + '/mysql-ssl',
-          'MAIN_DATABASE': 'IMP_PROJECTS',
-          'PROJECT_DB': 'IMP_PROJECTS',
-          'PROGRAM_DB': 'IMP_PROGRAMS',
-          'LOCATION_DB': 'IMP_LOCATIONS',
-          'USER_DB': 'IMP_USERS',
-          'MILESTONE_DB': 'IMP_MILESTONES',
-          'CAPITAL_DB': 'IMP_CAPITAL',
-          'ADMIN_DB': 'IMP_ADMIN',
-          'REPORTING_DB': 'IMP_REPORTING',
-          'ANALYTICS_DB': 'IMP_ANALYTICS',
-          'IMPORT_DB': 'IMP_IMPORTS',
-          'EXPORT_DB': 'IMP_EXPORTS',
-          'FILES_DB': 'IMP_FILES',
-          'NOTES_DB': 'IMP_NOTES',
           'S3_BUCKET': app_name + '-files',
           'S3_REGION': 'us-east-1',
           'S3_ACCESS_KEY': vault_s3_access_key,
@@ -102,7 +108,7 @@
           'LOG_TO_CONSOLE': 'true',
           'SERVER_ID': app_name + '-api-' + env_name,
           'SERVICE_NAME': app_name + '-api',
-          'SYNC_ADMIN_DB': 'IMP_ADMIN',
+          'SYNC_ADMIN_DB': (app_db_env_vars | default(_db_env_defaults)).ADMIN_DB | default('IMP_ADMIN'),
           'SYNC_TARGETS_TABLE': 'SYNC_TARGETS',
           'SYNC_ATTEMPTS_TABLE': 'SYNC_ATTEMPTS',
           'SYNC_CACHE_TTL': '300000',
@@ -110,7 +116,7 @@
           'BQ_PROJECT_ID': '',
           'BQ_DATASET': 'EXPANSIONS_PLANNING',
           'SLACK_WEBHOOK_URL': ''
-        }
+        } | combine(app_db_env_vars | default(_db_env_defaults))
       }}
   when: app_env_vars | length == 0
   no_log: true

@@ -20,6 +20,12 @@ const config = {
   },
   ansibleVenv: process.env.ANSIBLE_VENV || '/opt/orchestrator/venv',
   secretsDir: '/run/orchestrator/secrets',
+  infra: {
+    datastore: process.env.PROXMOX_DATASTORE || 'RWP-STOR',
+    haGroup: process.env.PROXMOX_HA_GROUP || 'RWP-DC-PAIR',
+    domain: process.env.DNS_DOMAIN || 'razorwire-productions.com',
+    deployUser: process.env.DEPLOY_USER || 'deploy',
+  },
   get appsDir() {
     return path.join(this.orchestratorHome, 'apps');
   },

@@ -188,3 +188,12 @@ variable "cloud_init_datastore" {
   type        = string
   default     = "local"
 }
+
+# ---------------------------------------------------------------------------
+# TLS Verification
+# ---------------------------------------------------------------------------
+variable "tls_skip_verify" {
+  description = "Skip TLS verification for Proxmox/UniFi providers (set false after deploying trusted certs)"
+  type        = bool
+  default     = true
+}

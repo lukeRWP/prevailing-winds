@@ -17,7 +17,22 @@ const activeProcesses = new Map();
 const sseClients = new Map();
 const envLocks = new Map();
 
-const PROCESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+// Per-operation-type timeout (milliseconds)
+const TIMEOUT_MAP = {
+  'provision': 45 * 60 * 1000,
+  'deploy': 20 * 60 * 1000,
+  'deploy-server': 20 * 60 * 1000,
+  'deploy-client': 20 * 60 * 1000,
+  'infra-apply': 20 * 60 * 1000,
+  'infra-apply-shared': 20 * 60 * 1000,
+  'infra-plan': 10 * 60 * 1000,
+  'infra-plan-shared': 10 * 60 * 1000,
+  'infra-destroy': 20 * 60 * 1000,
+  'db-setup': 10 * 60 * 1000,
+  'db-migrate': 10 * 60 * 1000,
+  'db-backup': 15 * 60 * 1000,
+};
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_SSH_KEY_PATH = process.env.ANSIBLE_SSH_PRIVATE_KEY_FILE || path.join(config.orchestratorHome, '.ssh', 'deploy_key');
 
 // Operation types that use infrastructure (Terraform/Ansible from PW repo)
@@ -44,8 +59,8 @@ function lockKey(app, env) {
   return `${app}:${env}`;
 }
 
-async function enqueue(app, env, type, { ref, vars, callbackUrl, dryRun } = {}) {
-  const opId = queue.create({ app, env, type, ref, vars, callbackUrl });
+async function enqueue(app, env, type, { ref, vars, callbackUrl, dryRun, initiatedBy } = {}) {
+  const opId = queue.create({ app, env, type, ref, vars, callbackUrl, initiatedBy });
   logger.info('executor', `Enqueued ${type} for ${app}:${env} — op ${opId}`);
   setImmediate(() => processQueue(app, env));
   return opId;
@@ -141,15 +156,47 @@ async function executeOperation(op) {
     if (DEPLOY_OPS.includes(type)) {
       const appRepoDir = path.join(config.reposDir, app);
       appendAndEmit(id, `[orchestrator] Building app tarballs...\n`);
-      // Override NODE_ENV so npm ci installs devDependencies (vite, etc.)
-      const buildEnv = { ...childEnv, NODE_ENV: 'development' };
-      const buildExitCode = await spawnAndStream(id, '/bin/bash', ['-c', [
-        'cd client && npm ci --legacy-peer-deps && npm run build && tar -czf ../imp-client.tar.gz -C build . && cd ..',
-        'cd server && npm ci && tar -czf ../imp-server.tar.gz index.js package.json package-lock.json src/ settings/ utils/ && cd ..',
-      ].join(' && ')], { cwd: appRepoDir, env: buildEnv });
-      if (buildExitCode !== 0) throw new Error(`App build failed with code ${buildExitCode}`);
-      parsedVars.server_tarball = path.join(appRepoDir, 'imp-server.tar.gz');
-      parsedVars.client_tarball = path.join(appRepoDir, 'imp-client.tar.gz');
+
+      const buildConfig = manifest.build || {};
+      const buildEnvOverrides = buildConfig.env || {};
+      const buildEnv = { ...childEnv, ...buildEnvOverrides };
+      const components = buildConfig.components || {};
+
+      if (Object.keys(components).length === 0) {
+        throw new Error(`No build.components defined in manifest for ${app}`);
+      }
+
+      for (const [compName, comp] of Object.entries(components)) {
+        appendAndEmit(id, `[orchestrator] Building ${compName}...\n`);
+
+        // Build shell commands for this component
+        const steps = [];
+        if (comp.dir) steps.push(`cd ${comp.dir}`);
+        if (comp.install) steps.push(comp.install);
+        if (comp.build) steps.push(comp.build);
+
+        // Create tarball
+        const tarball = comp.tarball || {};
+        const tarballName = tarball.name || `${compName}.tar.gz`;
+        const tarballDest = comp.dir ? `../${tarballName}` : tarballName;
+        if (tarball.from) {
+          // Tarball from a subdirectory (e.g., client build output)
+          const tarArgs = tarball.args || `.`;
+          steps.push(`tar -czf ${tarballDest} ${tarArgs}`);
+        } else if (tarball.includes) {
+          // Tarball specific files/dirs
+          steps.push(`tar -czf ${tarballDest} ${tarball.includes.join(' ')}`);
+        }
+
+        if (comp.dir) steps.push('cd ..');
+
+        const buildExitCode = await spawnAndStream(id, '/bin/bash', ['-c', steps.join(' && ')], { cwd: appRepoDir, env: buildEnv });
+        if (buildExitCode !== 0) throw new Error(`Build of ${compName} failed with code ${buildExitCode}`);
+
+        // Register tarball path for Ansible
+        parsedVars[`${compName}_tarball`] = path.join(appRepoDir, tarballName);
+      }
+
       appendAndEmit(id, `[orchestrator] Tarballs ready\n`);
     }
 
@@ -211,7 +258,8 @@ async function executeOperation(op) {
 
     appendAndEmit(id, `[orchestrator] Running: ${cmd} ${args.join(' ')}\n`);
 
-    const exitCode = await spawnAndStream(id, cmd, args, { cwd, env: childEnv });
+    const timeoutMs = TIMEOUT_MAP[type] || DEFAULT_TIMEOUT_MS;
+    const exitCode = await spawnAndStream(id, cmd, args, { cwd, env: childEnv, timeoutMs });
 
     if (exitCode !== 0) {
       throw new Error(`Process exited with code ${exitCode}`);
@@ -244,21 +292,24 @@ async function executeOperation(op) {
 
 function spawnAndStream(opId, cmd, args, opts) {
   return new Promise((resolve) => {
+    const { timeoutMs, ...spawnOpts } = opts || {};
+    const effectiveTimeout = timeoutMs || DEFAULT_TIMEOUT_MS;
+
     const child = spawn(cmd, args, {
-      ...opts,
+      ...spawnOpts,
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
     activeProcesses.set(opId, child);
 
-    // Process timeout — kill after 30 minutes to prevent stuck operations
+    // Process timeout — kill to prevent stuck operations
     const timer = setTimeout(() => {
-      appendAndEmit(opId, `[orchestrator] Process timeout after ${PROCESS_TIMEOUT_MS / 60000} minutes — killing\n`);
+      appendAndEmit(opId, `[orchestrator] Process timeout after ${effectiveTimeout / 60000} minutes — killing\n`);
       child.kill('SIGTERM');
       setTimeout(() => {
         if (!child.killed) child.kill('SIGKILL');
       }, 5000);
-    }, PROCESS_TIMEOUT_MS);
+    }, effectiveTimeout);
 
     child.stdout.on('data', (chunk) => appendAndEmit(opId, chunk.toString()));
     child.stderr.on('data', (chunk) => appendAndEmit(opId, chunk.toString()));
@@ -351,6 +402,14 @@ function buildAnsibleCmd(infraDir, _playbook, env, manifest, vars, tag) {
     sql_init_dir: path.join(appRepoDir, 'SQL'),
     db_migrations_path: path.join(appRepoDir, 'SQL', 'migrations'),
   };
+
+  // Flow database config from manifest to Ansible
+  const dbConfig = manifest.databases || {};
+  if (dbConfig.list) groupVars.mysql_databases = dbConfig.list;
+  if (dbConfig.schemaPrefix) groupVars.mysql_schema_prefix = dbConfig.schemaPrefix;
+  if (dbConfig.adminDb) groupVars.mysql_admin_db = dbConfig.adminDb;
+  if (dbConfig.envVars) groupVars.app_db_env_vars = dbConfig.envVars;
+
   const mergedVars = { ...groupVars, ...(vars || {}) };
   args.push('-e', JSON.stringify(mergedVars));
 

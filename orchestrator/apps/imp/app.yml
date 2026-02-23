@@ -7,6 +7,59 @@ displayName: "IMP Expansions Management"
 repo: "git@github.com:lukeRWP/Expansions-Management.git"
 vaultPrefix: "secret/apps/imp"
 
+# Build configuration — how to build deployment artifacts
+build:
+  env: { NODE_ENV: development }
+  components:
+    client:
+      dir: client
+      install: "npm ci --legacy-peer-deps"
+      build: "npm run build"
+      tarball:
+        name: "client.tar.gz"
+        from: "build"
+        args: "-C build ."
+    server:
+      dir: server
+      install: "npm ci"
+      tarball:
+        name: "server.tar.gz"
+        includes: [index.js, package.json, package-lock.json, src/, settings/, utils/]
+
+# Database configuration — drives MySQL role and app-server env vars
+databases:
+  list:
+    - IMP_PROJECTS
+    - IMP_PROGRAMS
+    - IMP_LOCATIONS
+    - IMP_USERS
+    - IMP_MILESTONES
+    - IMP_CAPITAL
+    - IMP_ADMIN
+    - IMP_REPORTING
+    - IMP_ANALYTICS
+    - IMP_IMPORTS
+    - IMP_EXPORTS
+    - IMP_FILES
+    - IMP_NOTES
+  schemaPrefix: "IMP_"
+  adminDb: "IMP_ADMIN"
+  envVars:
+    MAIN_DATABASE: IMP_PROJECTS
+    PROJECT_DB: IMP_PROJECTS
+    PROGRAM_DB: IMP_PROGRAMS
+    LOCATION_DB: IMP_LOCATIONS
+    USER_DB: IMP_USERS
+    MILESTONE_DB: IMP_MILESTONES
+    CAPITAL_DB: IMP_CAPITAL
+    ADMIN_DB: IMP_ADMIN
+    REPORTING_DB: IMP_REPORTING
+    ANALYTICS_DB: IMP_ANALYTICS
+    IMPORT_DB: IMP_IMPORTS
+    EXPORT_DB: IMP_EXPORTS
+    FILES_DB: IMP_FILES
+    NOTES_DB: IMP_NOTES
+
 # VM template — what services each environment gets
 vmTemplate:
   roles:

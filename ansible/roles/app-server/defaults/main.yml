@@ -14,5 +14,8 @@ group_databases: "imp_databases"
 group_storage: "imp_storage"
 group_servers: "imp_servers"
 
-# App env vars (empty = build from IMP defaults, non-empty = use as provided)
+# App env vars (empty = build from infrastructure + manifest, non-empty = use as provided)
 app_env_vars: {}
+
+# Database env vars from manifest (orchestrator passes via extra-vars, defaults to IMP)
+# app_db_env_vars: {}  # set by orchestrator — do not default here, let Jinja2 handle

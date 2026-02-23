@@ -53,6 +53,24 @@ router.post('/api/_y_/apps/:app/envs/:env/build', async (req, res) => {
   }
 });
 
+// Resume a build from a specific step (e.g., after fixing a failure)
+router.post('/api/_y_/apps/:app/envs/:env/build/resume', async (req, res) => {
+  try {
+    const ctx = requireAppEnv(req, res);
+    if (!ctx) return;
+
+    const { ref, resumeFrom } = req.body || {};
+    if (!resumeFrom) {
+      return error(res, 'resumeFrom is required (e.g., "provision", "deploy")', 400);
+    }
+
+    const result = await lifecycle.buildEnvironment(ctx.appName, ctx.envName, { ref, resumeFrom });
+    return success(res, result, result.message, 202);
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
 // Destroy environment infrastructure
 router.post('/api/_y_/apps/:app/envs/:env/destroy', async (req, res) => {
   try {

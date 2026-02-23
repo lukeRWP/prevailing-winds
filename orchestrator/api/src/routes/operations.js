@@ -65,6 +65,32 @@ router.get('/api/_x_/ops/:opId/stream', (req, res) => {
   executor.addSSEClient(req.params.opId, res);
 });
 
+// Retry a failed operation — creates a new operation with same params
+router.post('/api/_y_/ops/:opId/retry', async (req, res) => {
+  try {
+    const op = queue.get(req.params.opId);
+    if (!op) return error(res, 'Operation not found', 404);
+
+    if (req.authorizedApp && op.app !== req.authorizedApp) {
+      return error(res, 'Operation not found', 404);
+    }
+
+    if (op.status !== 'failed') {
+      return error(res, 'Only failed operations can be retried', 409);
+    }
+
+    const newOpId = await executor.enqueue(op.app, op.env, op.type, {
+      ref: op.ref,
+      vars: op.vars,
+      callbackUrl: op.callback_url,
+    });
+
+    return success(res, { opId: newOpId, retriedFrom: req.params.opId }, 'Operation retried');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
 router.post('/api/_y_/ops/:opId/cancel', (req, res) => {
   const op = queue.get(req.params.opId);
   if (!op) return error(res, 'Operation not found', 404);

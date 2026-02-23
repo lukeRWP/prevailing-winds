@@ -15,7 +15,11 @@ const ROLE_KEY_MAP = {
   server: 'server',
 };
 
-const agent = new https.Agent({ rejectUnauthorized: false });
+// Attempt to load CA certificate for proper TLS verification, fall back to insecure
+const caCertPath = path.join(config.orchestratorHome, 'certs', 'proxmox-ca.crt');
+const agent = fs.existsSync(caCertPath)
+  ? new https.Agent({ ca: fs.readFileSync(caCertPath) })
+  : new https.Agent({ rejectUnauthorized: false });
 
 let cachedCreds = null;
 

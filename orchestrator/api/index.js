@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const config = require('./src/config');
 const logger = require('./src/utils/logger');
 const { createAuthMiddleware } = require('./src/middleware/auth');
+const { validateParams } = require('./src/middleware/validation');
 const { errorHandler } = require('./src/middleware/errorHandler');
 const vault = require('./src/services/vault');
 const appRegistry = require('./src/services/appRegistry');
@@ -42,6 +43,9 @@ async function start() {
   app.use(cors());
   app.use(express.json());
   app.use(createAuthMiddleware());
+
+  // Input validation for :app and :env route params
+  app.use(validateParams());
 
   // Request logging
   app.use((req, res, next) => {

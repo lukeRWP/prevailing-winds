@@ -13,11 +13,15 @@ function requireAppEnv(req, res) {
   return { appName: req.params.app, envName: req.params.env };
 }
 
+function initiator(req) {
+  return req.authRole === 'admin' ? 'admin' : `app:${req.authorizedApp || 'unknown'}`;
+}
+
 router.post('/api/_y_/apps/:app/envs/:env/provision', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
   const { ref, vars, callbackUrl } = req.body || {};
-  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'provision', { ref, vars, callbackUrl });
+  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'provision', { ref, vars, callbackUrl, initiatedBy: initiator(req) });
   return success(res, { opId }, 'Provision queued', 202);
 });
 
@@ -25,7 +29,7 @@ router.post('/api/_y_/apps/:app/envs/:env/deploy', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
   const { ref, vars, callbackUrl } = req.body || {};
-  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'deploy', { ref, vars, callbackUrl });
+  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'deploy', { ref, vars, callbackUrl, initiatedBy: initiator(req) });
   return success(res, { opId }, 'Deploy queued', 202);
 });
 
@@ -33,7 +37,7 @@ router.post('/api/_y_/apps/:app/envs/:env/deploy/server', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
   const { ref, vars, callbackUrl } = req.body || {};
-  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'deploy-server', { ref, vars, callbackUrl });
+  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'deploy-server', { ref, vars, callbackUrl, initiatedBy: initiator(req) });
   return success(res, { opId }, 'Server deploy queued', 202);
 });
 
@@ -41,7 +45,7 @@ router.post('/api/_y_/apps/:app/envs/:env/deploy/client', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
   const { ref, vars, callbackUrl } = req.body || {};
-  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'deploy-client', { ref, vars, callbackUrl });
+  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'deploy-client', { ref, vars, callbackUrl, initiatedBy: initiator(req) });
   return success(res, { opId }, 'Client deploy queued', 202);
 });
 
@@ -49,7 +53,7 @@ router.post('/api/_y_/apps/:app/envs/:env/rollback', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
   const { ref, vars, callbackUrl } = req.body || {};
-  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'rollback', { ref, vars, callbackUrl });
+  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'rollback', { ref, vars, callbackUrl, initiatedBy: initiator(req) });
   return success(res, { opId }, 'Rollback queued', 202);
 });
 

@@ -1,4 +1,6 @@
 ---
+# Defaults for MySQL role — orchestrator overrides mysql_databases,
+# mysql_schema_prefix, and mysql_admin_db via extra-vars from app manifest.
 app_name: "imp"
 mysql_version: "8.0"
 mysql_port: 3306
