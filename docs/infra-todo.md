@@ -26,9 +26,8 @@ Remaining infrastructure items from the security audit. These require environmen
   - Fix: Deploy proper TLS certs on Proxmox, configure CA trust
   - Effort: Medium
 
-- [ ] **INFRA-M35: Cross-environment lateral movement via shared VLAN** — All environments (dev/qa/prod) share VLAN 87. Dev VM can reach prod DB if credentials known.
-  - Fix: Separate VLANs per environment or per-environment firewall rules
-  - Effort: High
+- [x] **INFRA-M35: Cross-environment lateral movement via shared VLAN** — ~~All environments share VLAN 87.~~ Fixed: Each environment now has its own VLAN (100/110/120). Proxmox cluster firewall + per-VM security groups enforce isolation. Cross-VLAN traffic dropped by default. SSH restricted to management CIDR only. (Commits `614c167`, `f9bb612`)
+  - Remaining: UniFi inter-VLAN firewall rules need activation after Proxmox recovery
 
 - [ ] **INFRA-M38: 365-day SSL certs with no rotation** — All self-signed certs expire in 1 year with no automated rotation or expiry monitoring.
   - Fix: Implement cert rotation automation, add Prometheus alerting
