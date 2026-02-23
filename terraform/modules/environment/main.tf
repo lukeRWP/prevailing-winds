@@ -58,7 +58,8 @@ locals {
   }
 
   # Roles that need external/production network (VLAN 7)
-  external_roles = toset(["client", "server"])
+  # Only client (nginx) needs external ingress; server is internal API only
+  external_roles = toset(["client"])
 
   # Base security groups applied to all VMs (flat string lookups)
   base_sg = [

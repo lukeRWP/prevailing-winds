@@ -47,7 +47,7 @@
       ExecStart=/usr/local/bin/node_exporter \
         --collector.systemd \
         --collector.processes \
-        --web.listen-address=:9100
+        --web.listen-address={{ ansible_host | default('0.0.0.0') }}:9100
       Restart=always
       RestartSec=5
       ProtectSystem=full

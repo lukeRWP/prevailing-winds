@@ -59,6 +59,24 @@
   tags:
     - provision
 
+- name: Remove cloud-init sudoers override (conflicts with deploy user config)
+  file:
+    path: /etc/sudoers.d/90-cloud-init-users
+    state: absent
+
+- name: Lock default ubuntu user account
+  user:
+    name: ubuntu
+    shell: /usr/sbin/nologin
+    password_lock: yes
+  failed_when: false
+
+- name: Remove ubuntu user SSH authorized keys
+  file:
+    path: /home/ubuntu/.ssh/authorized_keys
+    state: absent
+  failed_when: false
+
 - name: Configure SSH - disable root login
   lineinfile:
     path: /etc/ssh/sshd_config
@@ -73,11 +91,12 @@
     line: "PasswordAuthentication no"
   notify: restart sshd
 
-- name: Configure UFW - allow SSH
+- name: Configure UFW - allow SSH from management network only
   ufw:
     rule: allow
     port: "{{ ssh_port }}"
     proto: tcp
+    from_ip: "{{ management_cidr }}"
 
 - name: Configure UFW - default deny incoming
   ufw:

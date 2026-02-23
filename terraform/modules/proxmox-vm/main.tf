@@ -200,10 +200,10 @@ resource "proxmox_virtual_environment_firewall_options" "vm" {
 
   enabled       = true
   macfilter     = true      # Prevent MAC spoofing
-  dhcp          = true      # Allow DHCP (required for cloud-init)
+  dhcp          = true      # Allow DHCP traffic through ipfilter during bootstrap
   input_policy  = "DROP"    # Default deny inbound
-  output_policy = "ACCEPT"  # Allow outbound
-  ipfilter      = false     # Disabled — conflicts with DHCP before IP is learned
+  output_policy = "DROP"    # Default deny outbound (egress via security groups)
+  ipfilter      = true      # Prevent IP spoofing — dhcp=true handles bootstrap
 }
 
 # ---------------------------------------------------------------

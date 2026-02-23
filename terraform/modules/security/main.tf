@@ -6,6 +6,24 @@ terraform {
   }
 }
 
+# ---------------------------------------------------------------
+# Cluster-level firewall defaults — DROP inbound, DROP outbound
+# All traffic must be explicitly allowed via security groups.
+# ---------------------------------------------------------------
+resource "proxmox_virtual_environment_cluster_firewall" "policy" {
+  enabled        = true
+  ebtables       = true
+  input_policy   = "DROP"
+  output_policy  = "DROP"
+  forward_policy = "DROP"
+
+  log_ratelimit {
+    enabled = true
+    burst   = 10
+    rate    = "5/second"
+  }
+}
+
 variable "app_name" {
   description = "Application name for app-specific security group prefixes"
   type        = string
@@ -34,7 +52,7 @@ variable "env_cidrs" {
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
   name    = "pw-ssh"
-  comment = "SSH from management network"
+  comment = "SSH from management network only (no lateral movement between env VMs)"
 
   rule {
     type    = "in"
@@ -44,19 +62,6 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
     source  = var.internal_cidr
     comment = "SSH from management"
   }
-
-  # Also allow SSH from each environment VLAN (for inter-VM access within env)
-  dynamic "rule" {
-    for_each = { for k, v in var.env_cidrs : k => v if k != "mgmt" }
-    content {
-      type    = "in"
-      action  = "ACCEPT"
-      proto   = "tcp"
-      dport   = "22"
-      source  = rule.value
-      comment = "SSH from ${rule.key}"
-    }
-  }
 }
 
 # ---------------------------------------------------------------
@@ -64,7 +69,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "icmp" {
   name    = "pw-icmp"
-  comment = "ICMP ping from management and environment networks"
+  comment = "ICMP ping from management network only"
 
   rule {
     type    = "in"
@@ -72,17 +77,6 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "icmp" {
     proto   = "icmp"
     source  = var.internal_cidr
     comment = "ICMP from management"
-  }
-
-  dynamic "rule" {
-    for_each = { for k, v in var.env_cidrs : k => v if k != "mgmt" }
-    content {
-      type    = "in"
-      action  = "ACCEPT"
-      proto   = "icmp"
-      source  = rule.value
-      comment = "ICMP from ${rule.key}"
-    }
   }
 }
 
@@ -298,6 +292,14 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_b
     action  = "ACCEPT"
     proto   = "icmp"
     comment = "ICMP outbound"
+  }
+
+  rule {
+    type    = "out"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    comment = "SSH outbound (Ansible from orchestrator)"
   }
 }
 
