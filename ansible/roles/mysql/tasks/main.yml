@@ -219,6 +219,7 @@
     password: "{{ mysql_app_password }}"
     host: "{{ app_server_ip | default('%') }}"
     plugin: caching_sha2_password
+    update_password: always
     priv: "{{ mysql_databases | map('regex_replace', '^(.*)$', '\\1.*:SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES') | join('/') }}"
     login_unix_socket: /var/run/mysqld/mysqld.sock
     login_user: root
@@ -233,6 +234,7 @@
     password: "{{ mysql_ssl_password }}"
     host: "{{ app_server_ip | default('%') }}"
     plugin: caching_sha2_password
+    update_password: always
     priv: "{{ mysql_databases | map('regex_replace', '^(.*)$', '\\1.*:SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES') | join('/') }}"
     tls_requires:
       ssl:
