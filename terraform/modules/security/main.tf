@@ -14,13 +14,75 @@ resource "proxmox_virtual_environment_cluster_firewall" "policy" {
   enabled        = true
   ebtables       = true
   input_policy   = "DROP"
-  output_policy  = "DROP"
-  forward_policy = "DROP"
+  output_policy  = "ACCEPT"   # Host egress must remain ACCEPT for cluster comms
+  forward_policy = "ACCEPT"   # VM traffic filtered by per-VM firewall rules
 
   log_ratelimit {
     enabled = true
     burst   = 10
     rate    = "5/second"
+  }
+}
+
+# ---------------------------------------------------------------
+# Cluster-level firewall rules — apply to Proxmox NODES (not VMs).
+# Required because cluster input_policy=DROP blocks all inbound to
+# the hypervisors unless explicitly allowed here.
+# ---------------------------------------------------------------
+resource "proxmox_virtual_environment_firewall_rules" "cluster" {
+  depends_on = [proxmox_virtual_environment_cluster_firewall.policy]
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = var.internal_cidr
+    comment = "SSH to nodes from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8006"
+    source  = var.internal_cidr
+    comment = "Proxmox web UI from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8006"
+    source  = "10.0.1.0/24"
+    comment = "Proxmox web UI from primary LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = "10.0.1.0/24"
+    comment = "SSH to nodes from primary LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "icmp"
+    source  = var.internal_cidr
+    comment = "ICMP to nodes from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "5405:5412"
+    source  = var.internal_cidr
+    comment = "Corosync cluster comms"
   }
 }
 
