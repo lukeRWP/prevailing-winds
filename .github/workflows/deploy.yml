@@ -1,0 +1,64 @@
+name: Deploy Orchestrator
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-orchestrator
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Orchestrator
+    runs-on: self-hosted
+    steps:
+      - name: Trigger orchestrator self-update
+        run: |
+          echo "Triggering orchestrator self-update..."
+
+          RESULT=$(curl -sf -X POST \
+            "${{ vars.ORCHESTRATOR_URL }}/api/_y_/self/update" \
+            -H "Authorization: Bearer ${{ secrets.ORCHESTRATOR_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            --max-time 300)
+
+          STATUS=$(echo "$RESULT" | jq -r '.success')
+          if [ "$STATUS" != "true" ]; then
+            echo "Self-update failed:"
+            echo "$RESULT" | jq .
+            exit 1
+          fi
+
+          echo "$RESULT" | jq '.data'
+          echo "Orchestrator updated successfully"
+
+      - name: Verify health
+        run: |
+          echo "Waiting for orchestrator to restart..."
+          sleep 10
+
+          for i in $(seq 1 12); do
+            HEALTH=$(curl -sf "${{ vars.ORCHESTRATOR_URL }}/health" --max-time 5 2>/dev/null || echo '{"status":"down"}')
+            STATUS=$(echo "$HEALTH" | jq -r '.status // .data.status // "unknown"')
+            if [ "$STATUS" = "ok" ] || [ "$STATUS" = "healthy" ]; then
+              echo "Orchestrator is healthy"
+              exit 0
+            fi
+            echo "Attempt $i/12: status=$STATUS, retrying in 5s..."
+            sleep 5
+          done
+
+          echo "Orchestrator did not become healthy after 60 seconds"
+          exit 1
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-type: application/json' \
+            -d '{"text":"PW Orchestrator deploy FAILED on push to master"}' 2>/dev/null || true
