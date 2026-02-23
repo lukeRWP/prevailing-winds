@@ -7,6 +7,14 @@ displayName: "IMP Expansions Management"
 repo: "git@github.com:lukeRWP/Expansions-Management.git"
 vaultPrefix: "secret/apps/imp"
 
+# Ansible group names — maps VM roles to inventory group names.
+# The inventory generator defaults to <app>_<role>s but some roles need overrides.
+ansibleGroups:
+  client: imp_clients
+  server: imp_servers
+  database: imp_databases
+  storage: imp_storage
+
 # Build configuration — how to build deployment artifacts
 build:
   env: { NODE_ENV: development }
