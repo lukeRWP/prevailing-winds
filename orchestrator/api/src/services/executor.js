@@ -136,6 +136,21 @@ async function executeOperation(op) {
 
     let cmd, args, cwd;
 
+    // Build tarballs before deploy operations
+    const DEPLOY_OPS = ['deploy', 'deploy-server', 'deploy-client'];
+    if (DEPLOY_OPS.includes(type)) {
+      const appRepoDir = path.join(config.reposDir, app);
+      appendAndEmit(id, `[orchestrator] Building app tarballs...\n`);
+      const buildExitCode = await spawnAndStream(id, '/bin/bash', ['-c', [
+        'cd client && npm ci --legacy-peer-deps && npm run build && tar -czf ../imp-client.tar.gz -C build . && cd ..',
+        'cd server && npm ci && tar -czf ../imp-server.tar.gz index.js package.json package-lock.json src/ settings/ utils/ && cd ..',
+      ].join(' && ')], { cwd: appRepoDir, env: childEnv });
+      if (buildExitCode !== 0) throw new Error(`App build failed with code ${buildExitCode}`);
+      parsedVars.server_tarball = path.join(appRepoDir, 'imp-server.tar.gz');
+      parsedVars.client_tarball = path.join(appRepoDir, 'imp-client.tar.gz');
+      appendAndEmit(id, `[orchestrator] Tarballs ready\n`);
+    }
+
     switch (type) {
       case 'provision':
         ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'provision'));
