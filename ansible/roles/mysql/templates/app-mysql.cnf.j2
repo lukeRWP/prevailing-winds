@@ -2,6 +2,7 @@
 [mysqld]
 port = {{ mysql_port }}
 bind-address = {{ ansible_host }}
+skip_name_resolve
 skip_show_database
 datadir = {{ mysql_data_dir }}
 
