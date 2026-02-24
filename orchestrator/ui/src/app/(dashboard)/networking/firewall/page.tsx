@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { FirewallRulesTable } from '@/components/networking/firewall-rules-table';
-import { getGroupsByCategory } from '@/lib/networking-data';
+import { useApp } from '@/hooks/use-app';
+import { useNetworkingData, getGroupsByCategory } from '@/hooks/use-networking-data';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -16,8 +17,11 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function FirewallPage() {
+  const { currentApp } = useApp();
+  const { securityGroups, loading } = useNetworkingData(currentApp);
   const [activeTab, setActiveTab] = useState<TabKey>('platform');
-  const groups = getGroupsByCategory(activeTab);
+
+  const groups = getGroupsByCategory(securityGroups, activeTab);
 
   return (
     <div className="space-y-6">
@@ -48,13 +52,19 @@ export default function FirewallPage() {
           >
             {tab.label}
             <span className="ml-1.5 text-[10px] text-muted-foreground">
-              ({getGroupsByCategory(tab.key).length})
+              ({getGroupsByCategory(securityGroups, tab.key).length})
             </span>
           </button>
         ))}
       </div>
 
-      <FirewallRulesTable groups={groups} />
+      {loading ? (
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <p className="text-sm text-muted-foreground">Loading firewall rules...</p>
+        </div>
+      ) : (
+        <FirewallRulesTable groups={groups} />
+      )}
     </div>
   );
 }

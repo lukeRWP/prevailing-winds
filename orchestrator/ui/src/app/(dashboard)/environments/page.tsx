@@ -1,24 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useApp } from '@/hooks/use-app';
 import { EnvironmentCard } from '@/components/dashboard/environment-card';
 import type { EnvironmentStatus } from '@/types/api';
 
 export default function EnvironmentsPage() {
+  const { currentApp } = useApp();
   const [envStatuses, setEnvStatuses] = useState<Record<string, EnvironmentStatus>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchEnvs() {
       try {
-        const appRes = await fetch('/api/proxy/_x_/apps/imp');
+        const appRes = await fetch(`/api/proxy/_x_/apps/${currentApp}`);
         const appData = await appRes.json();
         if (!appData.success) return;
 
         const envNames = Object.keys(appData.data.environments || {});
         const results = await Promise.allSettled(
           envNames.map(async (env) => {
-            const res = await fetch(`/api/proxy/_x_/apps/imp/envs/${env}/status`);
+            const res = await fetch(`/api/proxy/_x_/apps/${currentApp}/envs/${env}/status`);
             const d = await res.json();
             return d.success ? { env, status: d.data } : null;
           })
@@ -37,8 +39,8 @@ export default function EnvironmentsPage() {
         setLoading(false);
       }
     }
-    fetchEnvs();
-  }, []);
+    if (currentApp) fetchEnvs();
+  }, [currentApp]);
 
   return (
     <div className="space-y-6">

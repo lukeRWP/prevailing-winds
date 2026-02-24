@@ -11,12 +11,14 @@ import {
   BarChart3,
   Zap,
   GitBranch,
+  Settings,
   ChevronLeft,
   ChevronRight,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { useApp } from '@/hooks/use-app';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -28,12 +30,15 @@ const NAV_ITEMS = [
   { href: '/logs', label: 'Logs', icon: FileText },
   { href: '/metrics', label: 'Metrics', icon: BarChart3 },
   { href: '/actions', label: 'Actions', icon: Zap },
+  { href: '/config', label: 'Config', icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const { currentApp, apps } = useApp();
+  const appData = apps.find((a) => a.name === currentApp);
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -54,9 +59,16 @@ export function Sidebar() {
           PW
         </div>
         {!collapsed && (
-          <span className="text-sm font-semibold text-foreground truncate">
-            Prevailing Winds
-          </span>
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-semibold text-foreground truncate">
+              Prevailing Winds
+            </span>
+            {appData && (
+              <span className="text-[10px] text-muted-foreground truncate">
+                {appData.displayName || currentApp}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

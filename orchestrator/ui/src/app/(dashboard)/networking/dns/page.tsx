@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { DnsRecordsTable } from '@/components/networking/dns-records-table';
-import { DNS_RECORDS } from '@/lib/networking-data';
+import { useApp } from '@/hooks/use-app';
+import { useNetworkingData } from '@/hooks/use-networking-data';
 import { cn } from '@/lib/utils';
 
 const FILTERS = [
@@ -17,10 +18,12 @@ const FILTERS = [
 type FilterKey = (typeof FILTERS)[number]['key'];
 
 export default function DnsPage() {
+  const { currentApp } = useApp();
+  const { dnsRecords, loading } = useNetworkingData(currentApp);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
 
-  const filtered = DNS_RECORDS.filter((r) => {
+  const filtered = dnsRecords.filter((r) => {
     if (filter !== 'all' && r.category !== filter) return false;
     if (search && !r.hostname.toLowerCase().includes(search.toLowerCase()) && !r.ip.includes(search)) return false;
     return true;
@@ -37,7 +40,7 @@ export default function DnsPage() {
           Back to networking
         </Link>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">DNS Records</h1>
-        <p className="text-sm text-muted-foreground">{DNS_RECORDS.length} A records across all environments</p>
+        <p className="text-sm text-muted-foreground">{dnsRecords.length} A records across all environments</p>
       </div>
 
       {/* Filters */}
@@ -67,7 +70,13 @@ export default function DnsPage() {
         />
       </div>
 
-      <DnsRecordsTable records={filtered} />
+      {loading ? (
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <p className="text-sm text-muted-foreground">Loading DNS records...</p>
+        </div>
+      ) : (
+        <DnsRecordsTable records={filtered} />
+      )}
     </div>
   );
 }

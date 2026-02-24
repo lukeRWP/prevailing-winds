@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Rocket, Server, Database, Power, HardDrive } from 'lucide-react';
 import { ConfirmationDialog } from '@/components/actions/confirmation-dialog';
+import { useApp } from '@/hooks/use-app';
 import { cn } from '@/lib/utils';
 
 type Severity = 'normal' | 'warning' | 'danger';
@@ -20,121 +21,127 @@ interface ActionConfig {
   requireTyping?: boolean;
 }
 
-const ACTIONS: ActionConfig[] = [
-  {
-    id: 'deploy',
-    label: 'Deploy',
-    description: 'Deploy application to an environment',
-    icon: Rocket,
-    severity: 'normal',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/deploy`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-      { key: 'ref', label: 'Git Ref', type: 'text' },
-    ],
-  },
-  {
-    id: 'provision',
-    label: 'Provision',
-    description: 'Run Ansible provision on environment VMs',
-    icon: Server,
-    severity: 'warning',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/provision`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'infra-plan',
-    label: 'Infra Plan',
-    description: 'Preview Terraform changes',
-    icon: HardDrive,
-    severity: 'normal',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/infra/plan`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'infra-apply',
-    label: 'Infra Apply',
-    description: 'Apply Terraform changes',
-    icon: HardDrive,
-    severity: 'warning',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/infra/apply`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'db-setup',
-    label: 'DB Setup',
-    description: 'Initialize database schemas',
-    icon: Database,
-    severity: 'warning',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/db/setup`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'db-backup',
-    label: 'DB Backup',
-    description: 'Backup all databases',
-    icon: Database,
-    severity: 'normal',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/db/backup`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'start',
-    label: 'Start',
-    description: 'Start all VMs in an environment',
-    icon: Power,
-    severity: 'normal',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/start`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'stop',
-    label: 'Stop',
-    description: 'Stop all VMs in an environment',
-    icon: Power,
-    severity: 'warning',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/stop`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-  },
-  {
-    id: 'destroy',
-    label: 'Destroy',
-    description: 'Destroy all infrastructure for an environment. This is irreversible!',
-    icon: Power,
-    severity: 'danger',
-    apiPath: (env) => `/api/proxy/_y_/apps/imp/envs/${env}/infra/destroy`,
-    method: 'POST',
-    fields: [
-      { key: 'env', label: 'Environment', type: 'select', options: ['dev', 'qa', 'prod'] },
-    ],
-    requireTyping: true,
-  },
-];
+function getActions(app: string, environments: string[]): ActionConfig[] {
+  const envOptions = environments.length > 0 ? environments : ['dev', 'qa', 'prod'];
+  return [
+    {
+      id: 'deploy',
+      label: 'Deploy',
+      description: 'Deploy application to an environment',
+      icon: Rocket,
+      severity: 'normal',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/deploy`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+        { key: 'ref', label: 'Git Ref', type: 'text' },
+      ],
+    },
+    {
+      id: 'provision',
+      label: 'Provision',
+      description: 'Run Ansible provision on environment VMs',
+      icon: Server,
+      severity: 'warning',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/provision`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'infra-plan',
+      label: 'Infra Plan',
+      description: 'Preview Terraform changes',
+      icon: HardDrive,
+      severity: 'normal',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/infra/plan`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'infra-apply',
+      label: 'Infra Apply',
+      description: 'Apply Terraform changes',
+      icon: HardDrive,
+      severity: 'warning',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/infra/apply`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'db-setup',
+      label: 'DB Setup',
+      description: 'Initialize database schemas',
+      icon: Database,
+      severity: 'warning',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/db/setup`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'db-backup',
+      label: 'DB Backup',
+      description: 'Backup all databases',
+      icon: Database,
+      severity: 'normal',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/db/backup`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'start',
+      label: 'Start',
+      description: 'Start all VMs in an environment',
+      icon: Power,
+      severity: 'normal',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/start`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'stop',
+      label: 'Stop',
+      description: 'Stop all VMs in an environment',
+      icon: Power,
+      severity: 'warning',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/stop`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+    },
+    {
+      id: 'destroy',
+      label: 'Destroy',
+      description: 'Destroy all infrastructure for an environment. This is irreversible!',
+      icon: Power,
+      severity: 'danger',
+      apiPath: (env) => `/api/proxy/_y_/apps/${app}/envs/${env}/infra/destroy`,
+      method: 'POST',
+      fields: [
+        { key: 'env', label: 'Environment', type: 'select', options: envOptions },
+      ],
+      requireTyping: true,
+    },
+  ];
+}
 
 export default function ActionsPage() {
   const router = useRouter();
+  const { currentApp, environments } = useApp();
+  const actions = useMemo(() => getActions(currentApp, environments), [currentApp, environments]);
+
   const [selectedAction, setSelectedAction] = useState<ActionConfig | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -143,7 +150,7 @@ export default function ActionsPage() {
 
   function selectAction(action: ActionConfig) {
     setSelectedAction(action);
-    setFormData({ env: 'dev' });
+    setFormData({ env: environments[0] || 'dev' });
     setError('');
   }
 
@@ -158,7 +165,7 @@ export default function ActionsPage() {
     setError('');
 
     try {
-      const env = formData.env || 'dev';
+      const env = formData.env || environments[0] || 'dev';
       const body: Record<string, string> = {};
       if (formData.ref) body.ref = formData.ref;
 
@@ -192,7 +199,7 @@ export default function ActionsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {ACTIONS.map((action) => {
+        {actions.map((action) => {
           const Icon = action.icon;
           const isSelected = selectedAction?.id === action.id;
           return (

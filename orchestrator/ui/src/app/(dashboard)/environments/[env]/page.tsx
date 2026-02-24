@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { VmCard } from '@/components/environments/vm-card';
 import { cn } from '@/lib/utils';
+import { useApp } from '@/hooks/use-app';
 import type { EnvironmentStatus, EnvironmentManifest } from '@/types/api';
 
 const ENV_BADGE: Record<string, string> = {
@@ -17,6 +18,7 @@ const ENV_BADGE: Record<string, string> = {
 export default function EnvironmentDetailPage() {
   const params = useParams<{ env: string }>();
   const envName = params.env;
+  const { currentApp } = useApp();
 
   const [status, setStatus] = useState<EnvironmentStatus | null>(null);
   const [manifest, setManifest] = useState<EnvironmentManifest | null>(null);
@@ -26,8 +28,8 @@ export default function EnvironmentDetailPage() {
     async function fetch_data() {
       try {
         const [statusRes, appRes] = await Promise.all([
-          fetch(`/api/proxy/_x_/apps/imp/envs/${envName}/status`).then((r) => r.json()),
-          fetch('/api/proxy/_x_/apps/imp').then((r) => r.json()),
+          fetch(`/api/proxy/_x_/apps/${currentApp}/envs/${envName}/status`).then((r) => r.json()),
+          fetch(`/api/proxy/_x_/apps/${currentApp}`).then((r) => r.json()),
         ]);
 
         if (statusRes.success) setStatus(statusRes.data);
@@ -40,8 +42,8 @@ export default function EnvironmentDetailPage() {
         setLoading(false);
       }
     }
-    fetch_data();
-  }, [envName]);
+    if (currentApp) fetch_data();
+  }, [envName, currentApp]);
 
   const badgeClass = ENV_BADGE[envName] || 'bg-zinc-500/20 text-zinc-400';
 

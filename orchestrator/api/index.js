@@ -9,6 +9,7 @@ const { errorHandler } = require('./src/middleware/errorHandler');
 const vault = require('./src/services/vault');
 const appRegistry = require('./src/services/appRegistry');
 const operationQueue = require('./src/services/operationQueue');
+const changeHistory = require('./src/services/changeHistory');
 const { httpRequestDuration } = require('./src/metrics');
 
 // Route modules
@@ -33,6 +34,9 @@ async function start() {
 
   // Initialize SQLite operation queue
   operationQueue.init();
+
+  // Initialize change history database
+  changeHistory.init();
 
   // Log token configuration
   const appTokenCount = Object.keys(config.appTokens).length;

@@ -1,12 +1,32 @@
+'use client';
+
 import Link from 'next/link';
 import { Shield, Globe, Server } from 'lucide-react';
 import { VlanCard } from '@/components/networking/vlan-card';
-import { VLANS, SECURITY_GROUPS, DNS_RECORDS, getAllFirewallRules } from '@/lib/networking-data';
+import { useApp } from '@/hooks/use-app';
+import { useNetworkingData, getAllFirewallRules } from '@/hooks/use-networking-data';
 
 export default function NetworkingPage() {
-  const allRules = getAllFirewallRules();
+  const { currentApp } = useApp();
+  const { vlans, securityGroups, dnsRecords, loading } = useNetworkingData(currentApp);
+
+  const allRules = getAllFirewallRules(securityGroups);
   const ingressRules = allRules.filter((r) => r.direction === 'IN');
   const egressRules = allRules.filter((r) => r.direction === 'OUT');
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Networking</h1>
+          <p className="text-sm text-muted-foreground">VLANs, firewall rules, DNS, and DHCP management</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <p className="text-sm text-muted-foreground">Loading networking data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -19,7 +39,7 @@ export default function NetworkingPage() {
       <div>
         <h2 className="text-sm font-medium text-foreground mb-3">VLANs</h2>
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-          {VLANS.map((vlan) => (
+          {vlans.map((vlan) => (
             <VlanCard key={vlan.id} vlan={vlan} />
           ))}
         </div>
@@ -36,7 +56,7 @@ export default function NetworkingPage() {
             <span className="text-sm font-medium text-foreground">Firewall Rules</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            {SECURITY_GROUPS.length} security groups · {ingressRules.length} ingress · {egressRules.length} egress
+            {securityGroups.length} security groups · {ingressRules.length} ingress · {egressRules.length} egress
           </p>
         </Link>
 
@@ -49,7 +69,7 @@ export default function NetworkingPage() {
             <span className="text-sm font-medium text-foreground">DNS Records</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            {DNS_RECORDS.length} A records · TTL 300s
+            {dnsRecords.length} A records · TTL 300s
           </p>
         </Link>
 

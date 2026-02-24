@@ -11,10 +11,12 @@ import {
   BarChart3,
   Zap,
   GitBranch,
+  Settings,
   LogOut,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useApp } from '@/hooks/use-app';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -26,6 +28,7 @@ const NAV_ITEMS = [
   { href: '/logs', label: 'Logs', icon: FileText },
   { href: '/metrics', label: 'Metrics', icon: BarChart3 },
   { href: '/actions', label: 'Actions', icon: Zap },
+  { href: '/config', label: 'Config', icon: Settings },
 ];
 
 interface MobileNavProps {
@@ -36,6 +39,8 @@ interface MobileNavProps {
 export function MobileNav({ open, onClose }: MobileNavProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { currentApp, apps } = useApp();
+  const appData = apps.find((a) => a.name === currentApp);
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -62,9 +67,16 @@ export function MobileNav({ open, onClose }: MobileNavProps) {
             <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
               PW
             </div>
-            <span className="text-sm font-semibold text-foreground">
-              Prevailing Winds
-            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-foreground">
+                Prevailing Winds
+              </span>
+              {appData && (
+                <span className="text-[10px] text-muted-foreground">
+                  {appData.displayName || currentApp}
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}

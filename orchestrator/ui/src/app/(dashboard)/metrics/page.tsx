@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Activity, Clock, CheckCircle2, XCircle, BarChart3, ExternalLink } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/stat-card';
+import { useApp } from '@/hooks/use-app';
 import type { Operation, HealthStatus } from '@/types/api';
 
 export default function MetricsPage() {
+  const { currentApp } = useApp();
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,7 +17,7 @@ export default function MetricsPage() {
       try {
         const [healthRes, opsRes] = await Promise.allSettled([
           fetch('/api/proxy/health/status').then((r) => r.json()),
-          fetch('/api/proxy/_x_/ops?limit=100').then((r) => r.json()),
+          fetch(`/api/proxy/_x_/ops?limit=100&app=${currentApp}`).then((r) => r.json()),
         ]);
         if (healthRes.status === 'fulfilled' && healthRes.value.success) {
           setHealth(healthRes.value.data);
@@ -32,7 +34,7 @@ export default function MetricsPage() {
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentApp]);
 
   const successOps = operations.filter((o) => o.status === 'success');
   const failedOps = operations.filter((o) => o.status === 'failed');

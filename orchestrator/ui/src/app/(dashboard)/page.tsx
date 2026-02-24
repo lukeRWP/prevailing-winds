@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Activity, Globe, Server, Clock } from 'lucide-react';
+import { useApp } from '@/hooks/use-app';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { EnvironmentCard } from '@/components/dashboard/environment-card';
 import { RecentOperations } from '@/components/dashboard/recent-operations';
@@ -15,6 +16,7 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const { currentApp, loading: appLoading } = useApp();
   const [data, setData] = useState<DashboardData>({
     health: null,
     envStatuses: {},
@@ -27,8 +29,8 @@ export default function DashboardPage() {
       try {
         const [healthRes, envsRes, opsRes] = await Promise.allSettled([
           fetch('/api/proxy/health/status').then((r) => r.json()),
-          fetch('/api/proxy/_x_/apps/imp').then((r) => r.json()),
-          fetch('/api/proxy/_x_/ops?limit=10').then((r) => r.json()),
+          fetch(`/api/proxy/_x_/apps/${currentApp}`).then((r) => r.json()),
+          fetch(`/api/proxy/_x_/ops?limit=10&app=${currentApp}`).then((r) => r.json()),
         ]);
 
         const health =
@@ -47,7 +49,7 @@ export default function DashboardPage() {
           const envNames = Object.keys(envsRes.value.data.environments || {});
           const statusResults = await Promise.allSettled(
             envNames.map(async (env) => {
-              const res = await fetch(`/api/proxy/_x_/apps/imp/envs/${env}/status`);
+              const res = await fetch(`/api/proxy/_x_/apps/${currentApp}/envs/${env}/status`);
               const d = await res.json();
               return d.success ? { env, status: d.data } : null;
             })
@@ -65,10 +67,10 @@ export default function DashboardPage() {
       }
     }
 
-    fetchDashboard();
+    if (currentApp) fetchDashboard();
     const interval = setInterval(fetchDashboard, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentApp]);
 
   const envEntries = Object.entries(data.envStatuses);
   const totalVms = envEntries.reduce((sum, [, s]) => sum + (s.vms?.length || 0), 0);

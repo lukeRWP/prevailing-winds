@@ -3,13 +3,25 @@
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Network } from 'lucide-react';
-import { VLANS, SECURITY_GROUPS, DNS_RECORDS } from '@/lib/networking-data';
+import { useApp } from '@/hooks/use-app';
+import { useNetworkingData } from '@/hooks/use-networking-data';
 import { cn } from '@/lib/utils';
 
 export default function VlanDetailPage() {
   const params = useParams<{ vlanId: string }>();
   const vlanId = parseInt(params.vlanId, 10);
-  const vlan = VLANS.find((v) => v.id === vlanId);
+  const { currentApp } = useApp();
+  const { vlans, securityGroups, dnsRecords, loading } = useNetworkingData(currentApp);
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-8 text-center">
+        <p className="text-sm text-muted-foreground">Loading VLAN data...</p>
+      </div>
+    );
+  }
+
+  const vlan = vlans.find((v) => v.id === vlanId);
 
   if (!vlan) {
     return (
@@ -20,14 +32,14 @@ export default function VlanDetailPage() {
   }
 
   // Find security groups relevant to this VLAN
-  const relevantGroups = SECURITY_GROUPS.filter((sg) =>
+  const relevantGroups = securityGroups.filter((sg) =>
     sg.rules.some((r) => r.source?.startsWith(vlan.cidr.replace('/24', '')) || r.dest?.startsWith(vlan.cidr.replace('/24', '')))
   );
 
   // Find DNS records for this environment
   const envRecords = vlan.environment
-    ? DNS_RECORDS.filter((r) => r.environment === vlan.environment)
-    : DNS_RECORDS.filter((r) => r.category === 'shared');
+    ? dnsRecords.filter((r) => r.environment === vlan.environment)
+    : dnsRecords.filter((r) => r.category === 'shared');
 
   return (
     <div className="space-y-6">

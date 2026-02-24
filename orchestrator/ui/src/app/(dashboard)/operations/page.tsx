@@ -4,9 +4,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { OperationsTable } from '@/components/operations/operations-table';
 import { OperationFilters } from '@/components/operations/operation-filters';
 import { RefreshCw } from 'lucide-react';
+import { useApp } from '@/hooks/use-app';
 import type { Operation } from '@/types/api';
 
 export default function OperationsPage() {
+  const { currentApp } = useApp();
   const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
   const [env, setEnv] = useState('');
@@ -15,7 +17,7 @@ export default function OperationsPage() {
 
   const fetchOps = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ limit: '50', app: currentApp });
       if (env) params.set('env', env);
       if (status) params.set('status', status);
 
@@ -31,7 +33,7 @@ export default function OperationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [env, status, type]);
+  }, [env, status, type, currentApp]);
 
   useEffect(() => {
     fetchOps();

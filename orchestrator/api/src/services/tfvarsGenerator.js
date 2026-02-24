@@ -63,7 +63,7 @@ async function generateTfvars(appName, envName) {
 async function generateSharedTfvars(appName) {
   const infraSecrets = await vault.readSecret('secret/data/pw/infra') || {};
   return {
-    app_name: appName || 'imp',
+    app_name: appName,
     environment: 'shared',
     deploy_shared: false,
     manage_cluster_resources: true,

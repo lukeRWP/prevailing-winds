@@ -2,10 +2,12 @@
 
 import { InfrastructureCanvas } from '@/components/topology/infrastructure-canvas';
 import { useTopologyData } from '@/hooks/use-topology-data';
+import { useApp } from '@/hooks/use-app';
 import { RefreshCw } from 'lucide-react';
 
 export default function TopologyPage() {
-  const { environments, envStatuses, loading, error, refresh } = useTopologyData();
+  const { currentApp } = useApp();
+  const { environments, envStatuses, loading, error, refresh } = useTopologyData(currentApp);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">

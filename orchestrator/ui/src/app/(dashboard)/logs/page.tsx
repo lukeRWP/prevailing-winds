@@ -3,11 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useApp } from '@/hooks/use-app';
 import type { Operation } from '@/types/api';
 
 const LEVELS = ['all', 'error', 'warning', 'info'] as const;
 
 export default function LogsPage() {
+  const { currentApp } = useApp();
   const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
   const [level, setLevel] = useState<string>('all');
@@ -16,7 +18,7 @@ export default function LogsPage() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ limit: '50', app: currentApp });
       if (envFilter) params.set('env', envFilter);
       // Use failed operations as error-level logs for now
       if (level === 'error') params.set('status', 'failed');
@@ -40,7 +42,7 @@ export default function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [level, search, envFilter]);
+  }, [level, search, envFilter, currentApp]);
 
   useEffect(() => {
     fetchLogs();

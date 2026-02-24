@@ -4,15 +4,17 @@ import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { PipelineFlow, type PipelineStep } from '@/components/cicd/pipeline-flow';
 import { DeploymentTracker } from '@/components/cicd/deployment-tracker';
+import { useApp } from '@/hooks/use-app';
 import type { Operation } from '@/types/api';
 
 export default function CicdPage() {
+  const { currentApp } = useApp();
   const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function fetchData() {
     try {
-      const res = await fetch('/api/proxy/_x_/ops?limit=50');
+      const res = await fetch(`/api/proxy/_x_/ops?limit=50&app=${currentApp}`);
       const data = await res.json();
       if (data.success) setOperations(data.data);
     } catch {
@@ -26,7 +28,7 @@ export default function CicdPage() {
     fetchData();
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentApp]);
 
   // Build pipeline steps from most recent build cycle
   const pipelineSteps = buildPipelineSteps(operations);
