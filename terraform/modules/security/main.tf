@@ -159,11 +159,11 @@ variable "env_cidrs" {
 }
 
 # ---------------------------------------------------------------
-# SSH from management network (rate limited via fail2ban on host)
+# SSH from management network + orchestrator per-env IPs
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
   name    = "pw-ssh"
-  comment = "SSH from management network only (no lateral movement between env VMs)"
+  comment = "SSH from management and orchestrator (no lateral movement between env VMs)"
 
   rule {
     type    = "in"
@@ -172,6 +172,21 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
     dport   = "22"
     source  = var.internal_cidr
     comment = "SSH from management"
+  }
+
+  # Orchestrator connects to env VMs from its per-VLAN IP (.2 on each env subnet).
+  # Without these rules, Ansible provisioning fails because the orchestrator's
+  # source IP doesn't match the management CIDR.
+  dynamic "rule" {
+    for_each = { for k, v in var.env_cidrs : k => v if k != "mgmt" }
+    content {
+      type    = "in"
+      action  = "ACCEPT"
+      proto   = "tcp"
+      dport   = "22"
+      source  = "${cidrhost(rule.value, 2)}/32"
+      comment = "SSH from orchestrator on ${rule.key}"
+    }
   }
 }
 
