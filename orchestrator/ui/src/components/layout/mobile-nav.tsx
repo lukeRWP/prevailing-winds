@@ -14,6 +14,7 @@ import {
   Settings,
   Boxes,
   KeyRound,
+  BookOpen,
   LogOut,
   X,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { href: '/apps', label: 'Apps', icon: Boxes },
   { href: '/secrets', label: 'Secrets', icon: KeyRound },
   { href: '/config', label: 'Config', icon: Settings },
+  { href: '/docs', label: 'Docs', icon: BookOpen },
 ];
 
 interface MobileNavProps {

@@ -14,6 +14,7 @@ import {
   Settings,
   Boxes,
   KeyRound,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { href: '/apps', label: 'Apps', icon: Boxes },
   { href: '/secrets', label: 'Secrets', icon: KeyRound },
   { href: '/config', label: 'Config', icon: Settings },
+  { href: '/docs', label: 'Docs', icon: BookOpen },
 ];
 
 export function Sidebar() {

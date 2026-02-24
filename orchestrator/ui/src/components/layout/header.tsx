@@ -19,6 +19,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   '/apps': 'Apps',
   '/secrets': 'Secrets',
   '/config': 'Config',
+  '/docs': 'Docs',
 };
 
 interface HeaderProps {
