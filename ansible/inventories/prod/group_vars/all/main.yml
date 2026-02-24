@@ -15,10 +15,10 @@ mysql_require_ssl: true
 mysql_init_databases: false
 mysql_innodb_buffer_pool_size: "4G"
 
-# Nginx — HTTPS with Let's Encrypt for production
+# Nginx — HTTPS with self-signed for now (LE requires public DNS)
 nginx_server_name: "web.razorwire-productions.com"
 nginx_backend_server: "{{ hostvars[groups[group_servers][0]].ansible_host }}"
-nginx_tls_mode: "letsencrypt"
+nginx_tls_mode: "selfsigned"
 
 # Network — VLAN 120 for production environment
 internal_cidr: "10.0.120.0/24"
