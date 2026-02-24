@@ -48,12 +48,7 @@
     insertafter: 'http {'
   notify: reload nginx
 
-- name: Ensure nginx is running
-  service:
-    name: nginx
-    state: started
-    enabled: yes
-
+# Generate certs BEFORE starting nginx — config references cert paths
 - name: Generate self-signed certificate
   command: >
     openssl req -x509 -nodes -days 365
@@ -91,8 +86,11 @@
   when: nginx_tls_mode == "letsencrypt" and not (le_renewal.stat.exists | default(false))
   notify: reload nginx
 
-- name: Flush handlers (ensure nginx starts with placeholder cert)
-  meta: flush_handlers
+- name: Ensure nginx is running
+  service:
+    name: nginx
+    state: started
+    enabled: yes
 
 - name: Obtain Let's Encrypt certificate
   command: >
