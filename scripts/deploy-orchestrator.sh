@@ -78,12 +78,22 @@ echo "Installing Ansible collections..."
 # Ensure required directories exist
 mkdir -p "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible/tmp"
 
-# Fix ownership
-chown -R orchestrator:orchestrator "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible"
+# Fix ownership (deploy user runs the orchestrator via PM2)
+ORCH_USER="${ORCH_USER:-deploy}"
+chown -R "${ORCH_USER}:${ORCH_USER}" "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible"
 
-# Restart service
+# Restart service via PM2
 echo "Restarting orchestrator service..."
-systemctl restart orchestrator
-
-echo "=== Deploy complete ==="
-systemctl status orchestrator --no-pager
+if command -v pm2 &>/dev/null; then
+  cd "${API_DIR}"
+  pm2 delete orchestrator-api 2>/dev/null || true
+  pm2 start ecosystem.config.js
+  echo "=== Deploy complete ==="
+  pm2 status orchestrator-api
+elif systemctl is-active orchestrator &>/dev/null; then
+  systemctl restart orchestrator
+  echo "=== Deploy complete ==="
+  systemctl status orchestrator --no-pager
+else
+  echo "WARNING: No service manager found. Restart orchestrator manually."
+fi
