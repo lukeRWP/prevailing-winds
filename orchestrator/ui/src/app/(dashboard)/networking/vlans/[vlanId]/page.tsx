@@ -10,8 +10,9 @@ import { cn } from '@/lib/utils';
 export default function VlanDetailPage() {
   const params = useParams<{ vlanId: string }>();
   const vlanId = parseInt(params.vlanId, 10);
-  const { currentApp } = useApp();
+  const { currentApp, apps } = useApp();
   const { vlans, securityGroups, dnsRecords, loading } = useNetworkingData(currentApp);
+  const appData = apps.find((a) => a.name === currentApp);
 
   if (loading) {
     return (
@@ -56,6 +57,11 @@ export default function VlanDetailPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             VLAN {vlan.id} — {vlan.name}
           </h1>
+          {appData && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-primary/15 text-primary">
+              {appData.displayName || currentApp}
+            </span>
+          )}
         </div>
       </div>
 

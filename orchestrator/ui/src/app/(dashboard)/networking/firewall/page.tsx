@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { FirewallRulesTable } from '@/components/networking/firewall-rules-table';
 import { useApp } from '@/hooks/use-app';
+import { AppSection } from '@/components/layout/app-section';
 import { useNetworkingData, getGroupsByCategory } from '@/hooks/use-networking-data';
 import { cn } from '@/lib/utils';
+import type { AppSummary } from '@/lib/app-context';
 
 const TABS = [
   { key: 'platform', label: 'Platform' },
@@ -17,11 +19,8 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function FirewallPage() {
-  const { currentApp } = useApp();
-  const { securityGroups, loading } = useNetworkingData(currentApp);
+  const { apps } = useApp();
   const [activeTab, setActiveTab] = useState<TabKey>('platform');
-
-  const groups = getGroupsByCategory(securityGroups, activeTab);
 
   return (
     <div className="space-y-6">
@@ -51,20 +50,30 @@ export default function FirewallPage() {
             )}
           >
             {tab.label}
-            <span className="ml-1.5 text-[10px] text-muted-foreground">
-              ({getGroupsByCategory(securityGroups, tab.key).length})
-            </span>
           </button>
         ))}
       </div>
 
-      {loading ? (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <p className="text-sm text-muted-foreground">Loading firewall rules...</p>
-        </div>
-      ) : (
-        <FirewallRulesTable groups={groups} />
-      )}
+      {apps.map((app) => (
+        <AppSection key={app.name} app={app}>
+          <AppFirewall app={app} activeTab={activeTab} />
+        </AppSection>
+      ))}
     </div>
   );
+}
+
+function AppFirewall({ app, activeTab }: { app: AppSummary; activeTab: TabKey }) {
+  const { securityGroups, loading } = useNetworkingData(app.name);
+  const groups = getGroupsByCategory(securityGroups, activeTab);
+
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Loading firewall rules...</p>;
+  }
+
+  if (groups.length === 0) {
+    return <p className="text-xs text-muted-foreground">No {activeTab} rules.</p>;
+  }
+
+  return <FirewallRulesTable groups={groups} />;
 }

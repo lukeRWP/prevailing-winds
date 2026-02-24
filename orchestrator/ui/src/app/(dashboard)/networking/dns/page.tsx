@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { DnsRecordsTable } from '@/components/networking/dns-records-table';
 import { useApp } from '@/hooks/use-app';
+import { AppSection } from '@/components/layout/app-section';
 import { useNetworkingData } from '@/hooks/use-networking-data';
 import { cn } from '@/lib/utils';
+import type { AppSummary } from '@/lib/app-context';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -18,16 +20,9 @@ const FILTERS = [
 type FilterKey = (typeof FILTERS)[number]['key'];
 
 export default function DnsPage() {
-  const { currentApp } = useApp();
-  const { dnsRecords, loading } = useNetworkingData(currentApp);
+  const { apps } = useApp();
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
-
-  const filtered = dnsRecords.filter((r) => {
-    if (filter !== 'all' && r.category !== filter) return false;
-    if (search && !r.hostname.toLowerCase().includes(search.toLowerCase()) && !r.ip.includes(search)) return false;
-    return true;
-  });
 
   return (
     <div className="space-y-6">
@@ -40,10 +35,10 @@ export default function DnsPage() {
           Back to networking
         </Link>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">DNS Records</h1>
-        <p className="text-sm text-muted-foreground">{dnsRecords.length} A records across all environments</p>
+        <p className="text-sm text-muted-foreground">A records across all environments</p>
       </div>
 
-      {/* Filters */}
+      {/* Global Filters */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex gap-1">
           {FILTERS.map((f) => (
@@ -70,13 +65,31 @@ export default function DnsPage() {
         />
       </div>
 
-      {loading ? (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <p className="text-sm text-muted-foreground">Loading DNS records...</p>
-        </div>
-      ) : (
-        <DnsRecordsTable records={filtered} />
-      )}
+      {apps.map((app) => (
+        <AppSection key={app.name} app={app}>
+          <AppDns app={app} filter={filter} search={search} />
+        </AppSection>
+      ))}
     </div>
   );
+}
+
+function AppDns({ app, filter, search }: { app: AppSummary; filter: FilterKey; search: string }) {
+  const { dnsRecords, loading } = useNetworkingData(app.name);
+
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Loading DNS records...</p>;
+  }
+
+  const filtered = dnsRecords.filter((r) => {
+    if (filter !== 'all' && r.category !== filter) return false;
+    if (search && !r.hostname.toLowerCase().includes(search.toLowerCase()) && !r.ip.includes(search)) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    return <p className="text-xs text-muted-foreground">No matching records.</p>;
+  }
+
+  return <DnsRecordsTable records={filtered} />;
 }

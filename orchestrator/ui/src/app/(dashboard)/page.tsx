@@ -3,152 +3,147 @@
 import { useEffect, useState } from 'react';
 import { Activity, Globe, Server, Clock } from 'lucide-react';
 import { useApp } from '@/hooks/use-app';
+import { AppSection } from '@/components/layout/app-section';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { EnvironmentCard } from '@/components/dashboard/environment-card';
 import { RecentOperations } from '@/components/dashboard/recent-operations';
+import type { AppSummary } from '@/lib/app-context';
 import type { EnvironmentStatus, Operation, HealthStatus } from '@/types/api';
 
-interface DashboardData {
-  health: HealthStatus | null;
-  envStatuses: Record<string, EnvironmentStatus>;
-  operations: Operation[];
-  loading: boolean;
-}
-
 export default function DashboardPage() {
-  const { currentApp, loading: appLoading } = useApp();
-  const [data, setData] = useState<DashboardData>({
-    health: null,
-    envStatuses: {},
-    operations: [],
-    loading: true,
-  });
+  const { apps, loading: appLoading } = useApp();
+  const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
-    async function fetchDashboard() {
+    async function fetchHealth() {
       try {
-        const [healthRes, envsRes, opsRes] = await Promise.allSettled([
-          fetch('/api/proxy/health/status').then((r) => r.json()),
-          fetch(`/api/proxy/_x_/apps/${currentApp}`).then((r) => r.json()),
-          fetch(`/api/proxy/_x_/ops?limit=10&app=${currentApp}`).then((r) => r.json()),
+        const res = await fetch('/api/proxy/health/status');
+        const data = await res.json();
+        if (data.success) setHealth(data.data);
+      } catch {
+        // silent
+      }
+    }
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const uptimeHours = health ? Math.floor(health.uptime / 3600) : 0;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Infrastructure overview and management</p>
+      </div>
+
+      {/* Global KPI */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Applications"
+          value={apps.length}
+          icon={Globe}
+          description={`${apps.reduce((s, a) => s + a.environments.length, 0)} total environments`}
+        />
+        <StatCard
+          label="Uptime"
+          value={appLoading ? '--' : `${uptimeHours}h`}
+          icon={Clock}
+          description="Orchestrator"
+        />
+      </div>
+
+      {/* Per-app sections */}
+      {apps.map((app) => (
+        <AppSection key={app.name} app={app}>
+          <DashboardAppContent app={app} />
+        </AppSection>
+      ))}
+    </div>
+  );
+}
+
+function DashboardAppContent({ app }: { app: AppSummary }) {
+  const [envStatuses, setEnvStatuses] = useState<Record<string, EnvironmentStatus>>({});
+  const [operations, setOperations] = useState<Operation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [envsRes, opsRes] = await Promise.allSettled([
+          fetch(`/api/proxy/_x_/apps/${app.name}`).then((r) => r.json()),
+          fetch(`/api/proxy/_x_/ops?limit=10&app=${app.name}`).then((r) => r.json()),
         ]);
 
-        const health =
-          healthRes.status === 'fulfilled' && healthRes.value.success
-            ? healthRes.value.data
-            : null;
-
-        const operations =
+        const ops =
           opsRes.status === 'fulfilled' && opsRes.value.success
             ? opsRes.value.data
             : [];
+        setOperations(ops);
 
-        // Fetch status for each environment
-        const envStatuses: Record<string, EnvironmentStatus> = {};
+        const statuses: Record<string, EnvironmentStatus> = {};
         if (envsRes.status === 'fulfilled' && envsRes.value.success) {
           const envNames = Object.keys(envsRes.value.data.environments || {});
           const statusResults = await Promise.allSettled(
             envNames.map(async (env) => {
-              const res = await fetch(`/api/proxy/_x_/apps/${currentApp}/envs/${env}/status`);
+              const res = await fetch(`/api/proxy/_x_/apps/${app.name}/envs/${env}/status`);
               const d = await res.json();
               return d.success ? { env, status: d.data } : null;
             })
           );
           statusResults.forEach((r) => {
             if (r.status === 'fulfilled' && r.value) {
-              envStatuses[r.value.env] = r.value.status;
+              statuses[r.value.env] = r.value.status;
             }
           });
         }
-
-        setData({ health, envStatuses, operations, loading: false });
+        setEnvStatuses(statuses);
       } catch {
-        setData((prev) => ({ ...prev, loading: false }));
+        // silent
+      } finally {
+        setLoading(false);
       }
     }
-
-    if (currentApp) fetchDashboard();
-    const interval = setInterval(fetchDashboard, 30000);
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [currentApp]);
+  }, [app.name]);
 
-  const envEntries = Object.entries(data.envStatuses);
+  const envEntries = Object.entries(envStatuses);
   const totalVms = envEntries.reduce((sum, [, s]) => sum + (s.vms?.length || 0), 0);
   const runningVms = envEntries.reduce(
     (sum, [, s]) => sum + (s.vms?.filter((v) => v.status === 'running').length || 0),
     0
   );
-  const successOps = data.operations.filter((o) => o.status === 'success').length;
-  const successRate =
-    data.operations.length > 0
-      ? Math.round((successOps / data.operations.length) * 100)
-      : 0;
+  const successOps = operations.filter((o) => o.status === 'success').length;
+  const successRate = operations.length > 0 ? Math.round((successOps / operations.length) * 100) : 0;
 
-  const uptimeHours = data.health ? Math.floor(data.health.uptime / 3600) : 0;
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Loading...</p>;
+  }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Infrastructure overview and management
-        </p>
+    <div className="space-y-4">
+      <div className="grid gap-3 grid-cols-3">
+        <StatCard label="VMs" value={`${runningVms}/${totalVms}`} icon={Server} description={runningVms === totalVms ? 'All healthy' : 'Some offline'} />
+        <StatCard label="Recent Ops" value={operations.length} icon={Activity} description={`${successRate}% success`} />
+        <StatCard label="Environments" value={envEntries.length} icon={Globe} description={`${totalVms} VMs`} />
       </div>
-
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Environments"
-          value={envEntries.length}
-          icon={Globe}
-          description={`${totalVms} total VMs`}
-        />
-        <StatCard
-          label="VMs Running"
-          value={`${runningVms}/${totalVms}`}
-          icon={Server}
-          description={runningVms === totalVms ? 'All healthy' : 'Some offline'}
-        />
-        <StatCard
-          label="Recent Ops"
-          value={data.operations.length}
-          icon={Activity}
-          description={`${successRate}% success rate`}
-        />
-        <StatCard
-          label="Uptime"
-          value={data.loading ? '--' : `${uptimeHours}h`}
-          icon={Clock}
-          description="Orchestrator"
-        />
+      <div className="grid gap-3 md:grid-cols-3">
+        {envEntries.map(([name, status]) => (
+          <EnvironmentCard
+            key={name}
+            name={name}
+            vlan={status.vlan}
+            cidr={status.cidr}
+            vms={status.vms || []}
+            pipeline={status.pipeline}
+          />
+        ))}
       </div>
-
-      {/* Environments */}
-      <div>
-        <h2 className="text-sm font-medium text-foreground mb-3">Environments</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          {envEntries.map(([name, status]) => (
-            <EnvironmentCard
-              key={name}
-              name={name}
-              vlan={status.vlan}
-              cidr={status.cidr}
-              vms={status.vms || []}
-              pipeline={status.pipeline}
-            />
-          ))}
-          {data.loading && envEntries.length === 0 && (
-            <div className="col-span-3 rounded-lg border border-border bg-card p-6 text-center">
-              <p className="text-sm text-muted-foreground">Loading environments...</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Recent Operations */}
-      <RecentOperations operations={data.operations} />
+      <RecentOperations operations={operations} />
     </div>
   );
 }

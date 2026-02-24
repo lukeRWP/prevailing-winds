@@ -10,8 +10,9 @@ import { cn } from '@/lib/utils';
 import type { AppDetails } from '@/types/api';
 
 export default function ConfigPage() {
-  const { currentApp } = useApp();
+  const { currentApp, apps } = useApp();
   const { addChange, hasPendingChanges } = useChanges();
+  const appData = apps.find((a) => a.name === currentApp);
   const [app, setApp] = useState<AppDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -71,7 +72,14 @@ export default function ConfigPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Configuration</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Configuration</h1>
+            {appData && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-primary/15 text-primary">
+                {appData.displayName || currentApp}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             Application manifest for {app.displayName || app.name}
           </p>

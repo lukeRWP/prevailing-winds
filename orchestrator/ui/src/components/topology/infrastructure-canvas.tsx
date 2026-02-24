@@ -16,15 +16,18 @@ import '@xyflow/react/dist/style.css';
 
 import { VmNode } from './nodes/vm-node';
 import { EnvGroupNode } from './nodes/env-group-node';
+import { AppGroupNode } from './nodes/app-group-node';
 import { VlanNode } from './nodes/vlan-node';
 import { VmDetailPanel } from './vm-detail-panel';
 import { TopologyLegend } from './topology-legend';
-import { buildTopology } from './topology-builder';
+import { buildTopology, buildMultiAppTopology } from './topology-builder';
+import type { AppTopologyInput } from './topology-builder';
 import type { EnvironmentStatus } from '@/types/api';
 
 const nodeTypes: NodeTypes = {
   vmNode: VmNode as unknown as NodeTypes[string],
   envGroupNode: EnvGroupNode as unknown as NodeTypes[string],
+  appGroupNode: AppGroupNode as unknown as NodeTypes[string],
   vlanNode: VlanNode as unknown as NodeTypes[string],
 };
 
@@ -37,15 +40,17 @@ interface InfrastructureCanvasProps {
     hosts: Record<string, { ip: string; externalIp?: string }>;
   }>;
   envStatuses: Record<string, EnvironmentStatus>;
+  appsData?: AppTopologyInput[];
 }
 
 export function InfrastructureCanvas({
   environments,
   envStatuses,
+  appsData,
 }: InfrastructureCanvasProps) {
   const topology = useMemo(
-    () => buildTopology(environments, envStatuses),
-    [environments, envStatuses]
+    () => appsData ? buildMultiAppTopology(appsData) : buildTopology(environments, envStatuses),
+    [environments, envStatuses, appsData]
   );
 
   const [nodes, , onNodesChange] = useNodesState(topology.nodes);

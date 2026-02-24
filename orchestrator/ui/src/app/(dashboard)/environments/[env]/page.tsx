@@ -18,7 +18,8 @@ const ENV_BADGE: Record<string, string> = {
 export default function EnvironmentDetailPage() {
   const params = useParams<{ env: string }>();
   const envName = params.env;
-  const { currentApp } = useApp();
+  const { currentApp, apps } = useApp();
+  const appData = apps.find((a) => a.name === currentApp);
 
   const [status, setStatus] = useState<EnvironmentStatus | null>(null);
   const [manifest, setManifest] = useState<EnvironmentManifest | null>(null);
@@ -75,6 +76,11 @@ export default function EnvironmentDetailPage() {
           <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', badgeClass)}>
             {envName}
           </span>
+          {appData && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-primary/15 text-primary">
+              {appData.displayName || currentApp}
+            </span>
+          )}
         </div>
         {status && (
           <p className="text-sm text-muted-foreground mt-1">

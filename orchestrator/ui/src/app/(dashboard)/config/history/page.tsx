@@ -16,7 +16,8 @@ interface ChangeSet {
 }
 
 export default function ChangeHistoryPage() {
-  const { currentApp } = useApp();
+  const { currentApp, apps } = useApp();
+  const appData = apps.find((a) => a.name === currentApp);
   const [history, setHistory] = useState<ChangeSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
@@ -67,7 +68,14 @@ export default function ChangeHistoryPage() {
           <ArrowLeft className="h-3 w-3" />
           Back to config
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Change History</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Change History</h1>
+          {appData && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-primary/15 text-primary">
+              {appData.displayName || currentApp}
+            </span>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">Applied configuration change sets with rollback</p>
       </div>
 

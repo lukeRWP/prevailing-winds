@@ -1,98 +1,40 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Activity, Clock, CheckCircle2, XCircle, BarChart3, ExternalLink } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, BarChart3, ExternalLink } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { useApp } from '@/hooks/use-app';
+import { AppSection } from '@/components/layout/app-section';
+import type { AppSummary } from '@/lib/app-context';
 import type { Operation, HealthStatus } from '@/types/api';
 
 export default function MetricsPage() {
-  const { currentApp } = useApp();
+  const { apps } = useApp();
   const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [operations, setOperations] = useState<Operation[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchMetrics() {
+    async function fetchHealth() {
       try {
-        const [healthRes, opsRes] = await Promise.allSettled([
-          fetch('/api/proxy/health/status').then((r) => r.json()),
-          fetch(`/api/proxy/_x_/ops?limit=100&app=${currentApp}`).then((r) => r.json()),
-        ]);
-        if (healthRes.status === 'fulfilled' && healthRes.value.success) {
-          setHealth(healthRes.value.data);
-        }
-        if (opsRes.status === 'fulfilled' && opsRes.value.success) {
-          setOperations(opsRes.value.data);
-        }
+        const res = await fetch('/api/proxy/health/status');
+        const data = await res.json();
+        if (data.success) setHealth(data.data);
       } catch {
         // silent
-      } finally {
-        setLoading(false);
       }
     }
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 30000);
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
     return () => clearInterval(interval);
-  }, [currentApp]);
-
-  const successOps = operations.filter((o) => o.status === 'success');
-  const failedOps = operations.filter((o) => o.status === 'failed');
-  const runningOps = operations.filter((o) => o.status === 'running');
-  const successRate = operations.length > 0
-    ? Math.round((successOps.length / operations.length) * 100)
-    : 0;
-  const avgDuration = successOps.length > 0
-    ? Math.round(successOps.reduce((sum, o) => sum + (o.duration_ms || 0), 0) / successOps.length / 1000)
-    : 0;
-
-  // Group operations by type for breakdown
-  const byType = operations.reduce<Record<string, { total: number; success: number; failed: number }>>((acc, op) => {
-    if (!acc[op.type]) acc[op.type] = { total: 0, success: 0, failed: 0 };
-    acc[op.type].total++;
-    if (op.status === 'success') acc[op.type].success++;
-    if (op.status === 'failed') acc[op.type].failed++;
-    return acc;
-  }, {});
+  }, []);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Metrics</h1>
-        <p className="text-sm text-muted-foreground">
-          Orchestrator and infrastructure metrics
-        </p>
+        <p className="text-sm text-muted-foreground">Orchestrator and infrastructure metrics</p>
       </div>
 
-      {/* KPI Grid */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Operations"
-          value={loading ? '--' : operations.length}
-          icon={Activity}
-          description="Last 100 operations"
-        />
-        <StatCard
-          label="Success Rate"
-          value={loading ? '--' : `${successRate}%`}
-          icon={CheckCircle2}
-          description={`${successOps.length} succeeded, ${failedOps.length} failed`}
-        />
-        <StatCard
-          label="Avg Duration"
-          value={loading ? '--' : `${avgDuration}s`}
-          icon={Clock}
-          description="Successful operations"
-        />
-        <StatCard
-          label="Active"
-          value={loading ? '--' : runningOps.length}
-          icon={BarChart3}
-          description="Currently running"
-        />
-      </div>
-
-      {/* Orchestrator Health */}
+      {/* Orchestrator Health (global) */}
       {health && (
         <div className="rounded-lg border border-border bg-card p-4">
           <h3 className="text-sm font-medium text-foreground mb-3">Orchestrator Health</h3>
@@ -105,42 +47,14 @@ export default function MetricsPage() {
         </div>
       )}
 
-      {/* Operations Breakdown */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-medium text-foreground">Operations by Type</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border bg-accent/30">
-                <th className="px-4 py-2 text-left text-[10px] font-medium text-muted-foreground uppercase">Type</th>
-                <th className="px-4 py-2 text-right text-[10px] font-medium text-muted-foreground uppercase">Total</th>
-                <th className="px-4 py-2 text-right text-[10px] font-medium text-muted-foreground uppercase">Success</th>
-                <th className="px-4 py-2 text-right text-[10px] font-medium text-muted-foreground uppercase">Failed</th>
-                <th className="px-4 py-2 text-right text-[10px] font-medium text-muted-foreground uppercase">Rate</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {Object.entries(byType)
-                .sort((a, b) => b[1].total - a[1].total)
-                .map(([type, stats]) => (
-                  <tr key={type} className="hover:bg-accent/20">
-                    <td className="px-4 py-2 text-xs text-foreground">{type}</td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground text-right">{stats.total}</td>
-                    <td className="px-4 py-2 text-xs text-emerald-400 text-right">{stats.success}</td>
-                    <td className="px-4 py-2 text-xs text-red-400 text-right">{stats.failed}</td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground text-right">
-                      {stats.total > 0 ? Math.round((stats.success / stats.total) * 100) : 0}%
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Per-app metrics */}
+      {apps.map((app) => (
+        <AppSection key={app.name} app={app}>
+          <AppMetrics appName={app.name} />
+        </AppSection>
+      ))}
 
-      {/* Grafana Links */}
+      {/* Grafana Links (global) */}
       <div className="rounded-lg border border-border bg-card p-4">
         <h3 className="text-sm font-medium text-foreground mb-3">External Dashboards</h3>
         <p className="text-xs text-muted-foreground mb-3">
@@ -156,6 +70,93 @@ export default function MetricsPage() {
       <p className="text-xs text-muted-foreground">
         Prometheus metrics (prom-client) and inline charts (Recharts) will be added in Phase 7/8.
       </p>
+    </div>
+  );
+}
+
+function AppMetrics({ appName }: { appName: string }) {
+  const [operations, setOperations] = useState<Operation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchOps() {
+      try {
+        const res = await fetch(`/api/proxy/_x_/ops?limit=100&app=${appName}`);
+        const data = await res.json();
+        if (data.success) setOperations(data.data);
+      } catch {
+        // silent
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchOps();
+    const interval = setInterval(fetchOps, 30000);
+    return () => clearInterval(interval);
+  }, [appName]);
+
+  const successOps = operations.filter((o) => o.status === 'success');
+  const failedOps = operations.filter((o) => o.status === 'failed');
+  const runningOps = operations.filter((o) => o.status === 'running');
+  const successRate = operations.length > 0
+    ? Math.round((successOps.length / operations.length) * 100)
+    : 0;
+  const avgDuration = successOps.length > 0
+    ? Math.round(successOps.reduce((sum, o) => sum + (o.duration_ms || 0), 0) / successOps.length / 1000)
+    : 0;
+
+  const byType = operations.reduce<Record<string, { total: number; success: number; failed: number }>>((acc, op) => {
+    if (!acc[op.type]) acc[op.type] = { total: 0, success: 0, failed: 0 };
+    acc[op.type].total++;
+    if (op.status === 'success') acc[op.type].success++;
+    if (op.status === 'failed') acc[op.type].failed++;
+    return acc;
+  }, {});
+
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Loading metrics...</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total Ops" value={operations.length} icon={Activity} description="Last 100" />
+        <StatCard label="Success Rate" value={`${successRate}%`} icon={CheckCircle2} description={`${successOps.length} ok, ${failedOps.length} failed`} />
+        <StatCard label="Avg Duration" value={`${avgDuration}s`} icon={Clock} description="Successful ops" />
+        <StatCard label="Active" value={runningOps.length} icon={BarChart3} description="Running now" />
+      </div>
+
+      <div className="rounded-md border border-border bg-card/50 overflow-hidden">
+        <div className="px-3 py-2 border-b border-border">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase">Operations by Type</h3>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border bg-accent/20">
+              <th className="px-3 py-1.5 text-left text-[10px] font-medium text-muted-foreground uppercase">Type</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-medium text-muted-foreground uppercase">Total</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-medium text-muted-foreground uppercase">Success</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-medium text-muted-foreground uppercase">Failed</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-medium text-muted-foreground uppercase">Rate</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {Object.entries(byType)
+              .sort((a, b) => b[1].total - a[1].total)
+              .map(([type, stats]) => (
+                <tr key={type} className="hover:bg-accent/20">
+                  <td className="px-3 py-1.5 text-xs text-foreground">{type}</td>
+                  <td className="px-3 py-1.5 text-xs text-muted-foreground text-right">{stats.total}</td>
+                  <td className="px-3 py-1.5 text-xs text-emerald-400 text-right">{stats.success}</td>
+                  <td className="px-3 py-1.5 text-xs text-red-400 text-right">{stats.failed}</td>
+                  <td className="px-3 py-1.5 text-xs text-muted-foreground text-right">
+                    {stats.total > 0 ? Math.round((stats.success / stats.total) * 100) : 0}%
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

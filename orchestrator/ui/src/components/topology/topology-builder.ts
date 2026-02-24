@@ -25,6 +25,10 @@ const EXTERNAL_VLAN = {
 const ENV_GROUP_WIDTH = 320;
 const ENV_GROUP_HEIGHT = 360;
 const ENV_GROUP_GAP = 40;
+const APP_GROUP_PADDING_X = 30;
+const APP_GROUP_PADDING_TOP = 50;
+const APP_GROUP_PADDING_BOTTOM = 20;
+const APP_GROUP_GAP = 50;
 const ENV_START_X = 80;
 const ENV_START_Y = 320;
 const MGMT_START_X = 80;
@@ -37,6 +41,21 @@ const VM_GAP_Y = 15;
 export interface TopologyData {
   nodes: Node[];
   edges: Edge[];
+}
+
+export interface EnvironmentBasic {
+  name: string;
+  vlan: number;
+  cidr: string;
+  gateway?: string;
+  hosts: Record<string, { ip: string; externalIp?: string }>;
+}
+
+export interface AppTopologyInput {
+  appName: string;
+  displayName: string;
+  environments: EnvironmentBasic[];
+  envStatuses: Record<string, EnvironmentStatus>;
 }
 
 const ROLE_ICONS: Record<string, string> = {
@@ -54,10 +73,21 @@ function getVmStatus(envStatus: EnvironmentStatus | undefined, role: string): Vm
   return envStatus.vms.find((vm) => vm.role === role);
 }
 
+// Legacy single-app builder (kept for compatibility)
 export function buildTopology(
-  environments: Array<{ name: string; vlan: number; cidr: string; gateway?: string; hosts: Record<string, { ip: string; externalIp?: string }> }>,
+  environments: EnvironmentBasic[],
   envStatuses: Record<string, EnvironmentStatus>
 ): TopologyData {
+  return buildMultiAppTopology([{
+    appName: 'default',
+    displayName: '',
+    environments,
+    envStatuses,
+  }]);
+}
+
+// Multi-app topology builder
+export function buildMultiAppTopology(appsData: AppTopologyInput[]): TopologyData {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
@@ -98,87 +128,123 @@ export function buildTopology(
     });
   });
 
-  // --- Environment groups ---
-  environments.forEach((env, envIndex) => {
-    const envId = `env-${env.name}`;
-    const envX = ENV_START_X + envIndex * (ENV_GROUP_WIDTH + ENV_GROUP_GAP);
-    const envY = ENV_START_Y;
-    const envStatus = envStatuses[env.name];
+  // --- Per-app groups ---
+  let currentAppY = ENV_START_Y;
 
-    // Environment group node
-    nodes.push({
-      id: envId,
-      type: 'envGroupNode',
-      position: { x: envX, y: envY },
-      data: {
-        label: env.name.toUpperCase(),
-        vlan: env.vlan,
-        cidr: env.cidr,
-        gateway: env.gateway,
-        width: ENV_GROUP_WIDTH,
-        height: ENV_GROUP_HEIGHT,
-        envName: env.name,
-      },
-    });
+  appsData.forEach((appData) => {
+    const { appName, displayName, environments, envStatuses } = appData;
+    const appGroupId = `app-${appName}`;
 
-    // VMs inside environment group
-    const hostEntries = Object.entries(env.hosts);
-    hostEntries.forEach(([role, hostConfig], hostIndex) => {
-      const col = hostIndex % 2;
-      const row = Math.floor(hostIndex / 2);
-      const vmId = `vm-${env.name}-${role}`;
-      const vmStatus = getVmStatus(envStatus, role);
+    // Calculate app group dimensions
+    const envCount = environments.length;
+    const appGroupInnerWidth = envCount * (ENV_GROUP_WIDTH + ENV_GROUP_GAP) - (envCount > 0 ? ENV_GROUP_GAP : 0);
+    const appGroupWidth = appGroupInnerWidth + APP_GROUP_PADDING_X * 2;
+    const appGroupHeight = ENV_GROUP_HEIGHT + APP_GROUP_PADDING_TOP + APP_GROUP_PADDING_BOTTOM;
+
+    // Only show the app group container if there are multiple apps
+    if (appsData.length > 1) {
+      nodes.push({
+        id: appGroupId,
+        type: 'appGroupNode',
+        position: { x: ENV_START_X - APP_GROUP_PADDING_X, y: currentAppY - APP_GROUP_PADDING_TOP + 10 },
+        data: {
+          label: appName,
+          displayName,
+          envCount,
+          width: Math.max(appGroupWidth, 400),
+          height: appGroupHeight,
+        },
+      });
+    }
+
+    // --- Environment groups inside this app ---
+    environments.forEach((env, envIndex) => {
+      const envId = `env-${appName}-${env.name}`;
+      const envX = appsData.length > 1
+        ? APP_GROUP_PADDING_X + envIndex * (ENV_GROUP_WIDTH + ENV_GROUP_GAP)
+        : ENV_START_X + envIndex * (ENV_GROUP_WIDTH + ENV_GROUP_GAP);
+      const envY = appsData.length > 1 ? APP_GROUP_PADDING_TOP : currentAppY;
+      const envStatus = envStatuses[env.name];
 
       nodes.push({
-        id: vmId,
-        type: 'vmNode',
-        position: {
-          x: 15 + col * (VM_WIDTH + VM_GAP_X),
-          y: 65 + row * (VM_HEIGHT + VM_GAP_Y),
-        },
-        parentId: envId,
-        extent: 'parent' as const,
+        id: envId,
+        type: 'envGroupNode',
+        position: { x: envX, y: envY },
+        ...(appsData.length > 1 ? { parentId: appGroupId, extent: 'parent' as const } : {}),
         data: {
-          label: role.charAt(0).toUpperCase() + role.slice(1),
-          role,
-          ip: hostConfig.ip,
-          externalIp: hostConfig.externalIp,
-          icon: ROLE_ICONS[role] || 'server',
-          status: vmStatus?.status || 'unknown',
-          vmid: vmStatus?.vmid,
-          node: vmStatus?.node,
+          label: env.name.toUpperCase(),
+          vlan: env.vlan,
+          cidr: env.cidr,
+          gateway: env.gateway,
+          width: ENV_GROUP_WIDTH,
+          height: ENV_GROUP_HEIGHT,
           envName: env.name,
-          isShared: false,
         },
       });
 
-      // Edge: external VLAN connection for client VMs
-      if (hostConfig.externalIp) {
-        edges.push({
-          id: `edge-ext-${env.name}-${role}`,
-          source: vmId,
-          target: 'vlan-external',
-          type: 'default',
-          animated: vmStatus?.status === 'running',
-          style: { stroke: '#6366f1', strokeWidth: 1.5, strokeDasharray: '5 5' },
-          label: hostConfig.externalIp,
+      // VMs inside environment group
+      const hostEntries = Object.entries(env.hosts);
+      hostEntries.forEach(([role, hostConfig], hostIndex) => {
+        const col = hostIndex % 2;
+        const row = Math.floor(hostIndex / 2);
+        const vmId = `vm-${appName}-${env.name}-${role}`;
+        const vmStatus = getVmStatus(envStatus, role);
+
+        nodes.push({
+          id: vmId,
+          type: 'vmNode',
+          position: {
+            x: 15 + col * (VM_WIDTH + VM_GAP_X),
+            y: 65 + row * (VM_HEIGHT + VM_GAP_Y),
+          },
+          parentId: envId,
+          extent: 'parent' as const,
+          data: {
+            label: role.charAt(0).toUpperCase() + role.slice(1),
+            role,
+            ip: hostConfig.ip,
+            externalIp: hostConfig.externalIp,
+            icon: ROLE_ICONS[role] || 'server',
+            status: vmStatus?.status || 'unknown',
+            vmid: vmStatus?.vmid,
+            node: vmStatus?.node,
+            envName: env.name,
+            isShared: false,
+          },
         });
-      }
+
+        // Edge: external VLAN connection for client VMs
+        if (hostConfig.externalIp) {
+          edges.push({
+            id: `edge-ext-${appName}-${env.name}-${role}`,
+            source: vmId,
+            target: 'vlan-external',
+            type: 'default',
+            animated: vmStatus?.status === 'running',
+            style: { stroke: '#6366f1', strokeWidth: 1.5, strokeDasharray: '5 5' },
+            label: hostConfig.externalIp,
+          });
+        }
+      });
+
+      // Edge: management VLAN → environment group
+      edges.push({
+        id: `edge-mgmt-${appName}-${env.name}`,
+        source: 'vlan-mgmt',
+        target: envId,
+        type: 'default',
+        animated: true,
+        style: { stroke: '#64748b', strokeWidth: 2 },
+      });
     });
 
-    // Edge: management VLAN → environment VLAN
-    edges.push({
-      id: `edge-mgmt-${env.name}`,
-      source: 'vlan-mgmt',
-      target: envId,
-      type: 'default',
-      animated: true,
-      style: { stroke: '#64748b', strokeWidth: 2 },
-    });
+    currentAppY += appGroupHeight + APP_GROUP_GAP;
   });
 
   // --- External VLAN node ---
-  const totalEnvWidth = environments.length * (ENV_GROUP_WIDTH + ENV_GROUP_GAP) - ENV_GROUP_GAP;
+  // Position to the right of the widest app's environments
+  const maxEnvCount = Math.max(...appsData.map((a) => a.environments.length), 1);
+  const totalEnvWidth = maxEnvCount * (ENV_GROUP_WIDTH + ENV_GROUP_GAP) - ENV_GROUP_GAP;
   nodes.push({
     id: 'vlan-external',
     type: 'vlanNode',

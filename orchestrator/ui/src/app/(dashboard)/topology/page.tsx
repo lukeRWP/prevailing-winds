@@ -1,13 +1,20 @@
 'use client';
 
+import { useMemo } from 'react';
 import { InfrastructureCanvas } from '@/components/topology/infrastructure-canvas';
-import { useTopologyData } from '@/hooks/use-topology-data';
+import { useMultiAppTopologyData } from '@/hooks/use-topology-data';
 import { useApp } from '@/hooks/use-app';
 import { RefreshCw } from 'lucide-react';
 
 export default function TopologyPage() {
-  const { currentApp } = useApp();
-  const { environments, envStatuses, loading, error, refresh } = useTopologyData(currentApp);
+  const { apps } = useApp();
+
+  const appInfos = useMemo(
+    () => apps.map((a) => ({ name: a.name, displayName: a.displayName })),
+    [apps]
+  );
+
+  const { appsData, loading, error, refresh } = useMultiAppTopologyData(appInfos);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -37,7 +44,7 @@ export default function TopologyPage() {
       )}
 
       <div className="flex-1 rounded-lg border border-border overflow-hidden">
-        {loading && environments.length === 0 ? (
+        {loading && appsData.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-sm text-muted-foreground">
               Loading topology...
@@ -45,8 +52,9 @@ export default function TopologyPage() {
           </div>
         ) : (
           <InfrastructureCanvas
-            environments={environments}
-            envStatuses={envStatuses}
+            environments={[]}
+            envStatuses={{}}
+            appsData={appsData}
           />
         )}
       </div>
