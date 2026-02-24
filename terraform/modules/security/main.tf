@@ -84,6 +84,55 @@ resource "proxmox_virtual_environment_firewall_rules" "cluster" {
     source  = var.internal_cidr
     comment = "Corosync cluster comms"
   }
+
+  # --- Inter-node cluster communication (primary LAN) ---
+  # Proxmox nodes communicate on 10.0.1.0/24 for Ceph and Corosync.
+  # Without these rules, rbd/Ceph OSD traffic is blocked between nodes,
+  # causing pvedaemon hangs and HTTP 596 timeouts on VM status queries.
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "icmp"
+    source  = "10.0.1.0/24"
+    comment = "ICMP from primary LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "5405:5412"
+    source  = "10.0.1.0/24"
+    comment = "Corosync from primary LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "6789"
+    source  = "10.0.1.0/24"
+    comment = "Ceph MON from primary LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3300"
+    source  = "10.0.1.0/24"
+    comment = "Ceph MON v2 from primary LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "6800:7300"
+    source  = "10.0.1.0/24"
+    comment = "Ceph OSD from primary LAN"
+  }
 }
 
 variable "app_name" {
