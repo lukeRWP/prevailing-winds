@@ -170,7 +170,7 @@ environments:
         proxmoxNode: "prx002"
       database:
         ip: "10.0.120.12"
-        proxmoxNode: "prx001"
+        proxmoxNode: "prx002"
       storage:
         ip: "10.0.120.13"
         proxmoxNode: "prx002"
