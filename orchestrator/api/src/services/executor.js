@@ -33,7 +33,7 @@ const TIMEOUT_MAP = {
   'db-backup': 15 * 60 * 1000,
 };
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
-const DEFAULT_SSH_KEY_PATH = process.env.ANSIBLE_SSH_PRIVATE_KEY_FILE || path.join(config.orchestratorHome, '.ssh', 'deploy_key');
+const DEFAULT_SSH_KEY_PATH = process.env.ANSIBLE_PRIVATE_KEY_FILE || path.join(config.orchestratorHome, '.ssh', 'deploy_key');
 
 // Operation types that use infrastructure (Terraform/Ansible from PW repo)
 const INFRA_OPS = [
@@ -351,7 +351,7 @@ function buildChildEnv({ infraSecrets, appSecrets, sshKeyPath, manifest, env }) 
 
   // Ansible SSH key
   if (sshKeyPath) {
-    childEnv.ANSIBLE_SSH_PRIVATE_KEY_FILE = sshKeyPath;
+    childEnv.ANSIBLE_PRIVATE_KEY_FILE = sshKeyPath;
     childEnv.GIT_SSH_COMMAND = `ssh -i ${sshKeyPath} -o StrictHostKeyChecking=accept-new`;
   }
 
