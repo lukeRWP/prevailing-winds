@@ -441,11 +441,23 @@ function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
   }
   const tfCmd = `terraform ${actionArgs.join(' ')}`;
 
-  // Retry apply once — the Proxmox provider may not populate MAC addresses for
-  // single-NIC VMs on first create, causing dependent resources (DHCP) to fail.
-  // A second apply reads the MACs from the existing VMs and succeeds.
-  if (action === 'apply') {
-    cmds.push(`${tfCmd} || ${tfCmd}`);
+  // Retry apply once — first apply creates VMs but may fail on DHCP reservations
+  // because: (a) MACs aren't known until VMs exist, and (b) VMs boot and create
+  // ghost client records in UniFi that block new reservations.
+  // Between retries, clean up ghost UniFi clients so the second apply succeeds.
+  if (action === 'apply' && workspace !== 'shared') {
+    const cleanupScript = path.join(config.orchestratorHome, 'scripts', 'unifi-cleanup-ghosts.js');
+    const vmIPs = envConfig && envConfig.hosts
+      ? Object.values(envConfig.hosts).map(h => h.ip).filter(Boolean).join(' ')
+      : '';
+    const extIPs = envConfig && envConfig.hosts
+      ? Object.values(envConfig.hosts).map(h => h.externalIp).filter(Boolean).join(' ')
+      : '';
+    const allIPs = [vmIPs, extIPs].filter(Boolean).join(' ');
+    const cleanupCmd = allIPs ? `node ${cleanupScript} ${allIPs}` : 'true';
+    cmds.push(`${tfCmd} || (${cleanupCmd} && ${tfCmd})`);
+  } else if (action === 'apply') {
+    cmds.push(tfCmd);
   } else {
     cmds.push(tfCmd);
   }
