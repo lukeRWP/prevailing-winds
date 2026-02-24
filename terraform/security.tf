@@ -2,10 +2,11 @@
 # Environment workspaces reference existing groups by their deterministic names.
 
 module "security" {
-  source        = "./modules/security"
-  count         = var.manage_cluster_resources ? 1 : 0
-  app_name      = var.app_name
-  internal_cidr = "10.0.5.0/24"
+  source           = "./modules/security"
+  count            = var.manage_cluster_resources ? 1 : 0
+  app_name         = var.app_name
+  internal_cidr    = "10.0.5.0/24"
+  workstation_cidr = "10.0.87.0/24"
   env_cidrs = {
     mgmt = "10.0.5.0/24"
     dev  = "10.0.100.0/24"

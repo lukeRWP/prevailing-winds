@@ -71,6 +71,32 @@ resource "proxmox_virtual_environment_firewall_rules" "cluster" {
   rule {
     type    = "in"
     action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = var.workstation_cidr
+    comment = "SSH to nodes from workstation LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8006"
+    source  = var.workstation_cidr
+    comment = "Proxmox web UI from workstation LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "icmp"
+    source  = var.workstation_cidr
+    comment = "ICMP from workstation LAN"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
     proto   = "icmp"
     source  = var.internal_cidr
     comment = "ICMP to nodes from management"
@@ -147,6 +173,12 @@ variable "internal_cidr" {
   default     = "10.0.5.0/24"
 }
 
+variable "workstation_cidr" {
+  description = "Workstation LAN CIDR (10.0.87.0/24)"
+  type        = string
+  default     = "10.0.87.0/24"
+}
+
 variable "env_cidrs" {
   description = "Map of environment name to CIDR for per-env security groups"
   type        = map(string)
@@ -172,6 +204,15 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
     dport   = "22"
     source  = var.internal_cidr
     comment = "SSH from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = var.workstation_cidr
+    comment = "SSH from workstation LAN"
   }
 
   # Orchestrator connects to env VMs from its per-VLAN IP (.2 on each env subnet).
