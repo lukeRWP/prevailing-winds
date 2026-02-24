@@ -83,18 +83,22 @@ mkdir -p "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible/tmp"
 ORCH_USER="${ORCH_USER:-deploy}"
 chown -R "${ORCH_USER}:${ORCH_USER}" "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible"
 
-# Restart service via PM2
-echo "Restarting orchestrator service..."
-if command -v pm2 &>/dev/null; then
-  cd "${API_DIR}"
-  pm2 delete orchestrator-api 2>/dev/null || true
-  pm2 start ecosystem.config.js
-  echo "=== Deploy complete ==="
-  pm2 status orchestrator-api
-elif systemctl is-active orchestrator &>/dev/null; then
-  systemctl restart orchestrator
-  echo "=== Deploy complete ==="
-  systemctl status orchestrator --no-pager
+# Restart service (skip if SKIP_RESTART=1, e.g. when called from self-update API)
+if [ "${SKIP_RESTART:-0}" = "1" ]; then
+  echo "=== Deploy complete (restart skipped — caller will handle) ==="
 else
-  echo "WARNING: No service manager found. Restart orchestrator manually."
+  echo "Restarting orchestrator service..."
+  if command -v pm2 &>/dev/null; then
+    cd "${API_DIR}"
+    pm2 delete orchestrator-api 2>/dev/null || true
+    pm2 start ecosystem.config.js
+    echo "=== Deploy complete ==="
+    pm2 status orchestrator-api
+  elif systemctl is-active orchestrator &>/dev/null; then
+    systemctl restart orchestrator
+    echo "=== Deploy complete ==="
+    systemctl status orchestrator --no-pager
+  else
+    echo "WARNING: No service manager found. Restart orchestrator manually."
+  fi
 fi

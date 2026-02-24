@@ -34,12 +34,12 @@ router.post('/api/_y_/self/update', async (req, res) => {
     });
     logger.info('self-update', `Git pull: ${pullOutput.trim()}`);
 
-    // Step 2: Run deploy script (syncs files, installs deps)
-    // Run synchronously so we can report success/failure before restart
+    // Step 2: Run deploy script (syncs files, installs deps — skip restart)
+    // SKIP_RESTART=1 prevents the script from killing PM2 while we're running
     const deployOutput = execSync(`bash ${scriptPath}`, {
       cwd: repoDir,
       timeout: 120000,
-      env: { ...process.env, HOME: config.orchestratorHome },
+      env: { ...process.env, HOME: config.orchestratorHome, SKIP_RESTART: '1' },
       encoding: 'utf-8',
     });
     logger.info('self-update', `Deploy script completed (${deployOutput.length} chars output)`);
