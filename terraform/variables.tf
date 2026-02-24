@@ -105,7 +105,7 @@ variable "management_cidr" {
 variable "prod_db_node" {
   description = "Proxmox node for prod DB VM (anti-affinity with server)"
   type        = string
-  default     = "prx001"
+  default     = "prx002"
 }
 
 # ---------------------------------------------------------------------------
