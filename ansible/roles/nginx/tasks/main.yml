@@ -66,6 +66,30 @@
   when: nginx_tls_mode == "selfsigned"
   notify: reload nginx
 
+# For letsencrypt mode: create placeholder self-signed cert at the LE path
+# so nginx can start before certbot obtains the real cert
+- name: Create Let's Encrypt directory structure
+  file:
+    path: "/etc/letsencrypt/live/{{ nginx_server_name }}"
+    state: directory
+    mode: "0755"
+  when: nginx_tls_mode == "letsencrypt"
+
+- name: Generate placeholder cert for nginx startup
+  command: >
+    openssl req -x509 -nodes -days 1
+    -newkey ec -pkeyopt ec_paramgen_curve:P-256
+    -keyout /etc/letsencrypt/live/{{ nginx_server_name }}/privkey.pem
+    -out /etc/letsencrypt/live/{{ nginx_server_name }}/fullchain.pem
+    -subj "/CN={{ nginx_server_name }}"
+  args:
+    creates: "/etc/letsencrypt/live/{{ nginx_server_name }}/fullchain.pem"
+  when: nginx_tls_mode == "letsencrypt"
+  notify: reload nginx
+
+- name: Flush handlers (ensure nginx starts with placeholder cert)
+  meta: flush_handlers
+
 - name: Obtain Let's Encrypt certificate
   command: >
     certbot --nginx
