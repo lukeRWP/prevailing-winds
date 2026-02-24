@@ -111,7 +111,7 @@ environments:
   dev:
     vlan: 100
     cidr: "10.0.100.0/24"
-    gateway: "10.0.100.254"
+    gateway: "10.0.100.1"
     terraformWorkspace: "dev"
     hosts:
       client:
@@ -134,7 +134,7 @@ environments:
   qa:
     vlan: 110
     cidr: "10.0.110.0/24"
-    gateway: "10.0.110.254"
+    gateway: "10.0.110.1"
     terraformWorkspace: "qa"
     hosts:
       client:
@@ -157,7 +157,7 @@ environments:
   prod:
     vlan: 120
     cidr: "10.0.120.0/24"
-    gateway: "10.0.120.254"
+    gateway: "10.0.120.1"
     terraformWorkspace: "prod"
     hosts:
       client:
