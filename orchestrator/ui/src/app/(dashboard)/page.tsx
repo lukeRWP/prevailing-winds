@@ -1,4 +1,89 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Activity, Globe, Server, Clock } from 'lucide-react';
+import { StatCard } from '@/components/dashboard/stat-card';
+import { EnvironmentCard } from '@/components/dashboard/environment-card';
+import { RecentOperations } from '@/components/dashboard/recent-operations';
+import type { EnvironmentStatus, Operation, HealthStatus } from '@/types/api';
+
+interface DashboardData {
+  health: HealthStatus | null;
+  envStatuses: Record<string, EnvironmentStatus>;
+  operations: Operation[];
+  loading: boolean;
+}
+
 export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData>({
+    health: null,
+    envStatuses: {},
+    operations: [],
+    loading: true,
+  });
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      try {
+        const [healthRes, envsRes, opsRes] = await Promise.allSettled([
+          fetch('/api/proxy/health/status').then((r) => r.json()),
+          fetch('/api/proxy/_x_/apps/imp').then((r) => r.json()),
+          fetch('/api/proxy/_x_/ops?limit=10').then((r) => r.json()),
+        ]);
+
+        const health =
+          healthRes.status === 'fulfilled' && healthRes.value.success
+            ? healthRes.value.data
+            : null;
+
+        const operations =
+          opsRes.status === 'fulfilled' && opsRes.value.success
+            ? opsRes.value.data
+            : [];
+
+        // Fetch status for each environment
+        const envStatuses: Record<string, EnvironmentStatus> = {};
+        if (envsRes.status === 'fulfilled' && envsRes.value.success) {
+          const envNames = Object.keys(envsRes.value.data.environments || {});
+          const statusResults = await Promise.allSettled(
+            envNames.map(async (env) => {
+              const res = await fetch(`/api/proxy/_x_/apps/imp/envs/${env}/status`);
+              const d = await res.json();
+              return d.success ? { env, status: d.data } : null;
+            })
+          );
+          statusResults.forEach((r) => {
+            if (r.status === 'fulfilled' && r.value) {
+              envStatuses[r.value.env] = r.value.status;
+            }
+          });
+        }
+
+        setData({ health, envStatuses, operations, loading: false });
+      } catch {
+        setData((prev) => ({ ...prev, loading: false }));
+      }
+    }
+
+    fetchDashboard();
+    const interval = setInterval(fetchDashboard, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const envEntries = Object.entries(data.envStatuses);
+  const totalVms = envEntries.reduce((sum, [, s]) => sum + (s.vms?.length || 0), 0);
+  const runningVms = envEntries.reduce(
+    (sum, [, s]) => sum + (s.vms?.filter((v) => v.status === 'running').length || 0),
+    0
+  );
+  const successOps = data.operations.filter((o) => o.status === 'success').length;
+  const successRate =
+    data.operations.length > 0
+      ? Math.round((successOps / data.operations.length) * 100)
+      : 0;
+
+  const uptimeHours = data.health ? Math.floor(data.health.uptime / 3600) : 0;
+
   return (
     <div className="space-y-6">
       <div>
@@ -10,24 +95,58 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {['Environments', 'Operations', 'VM Status', 'Uptime'].map((label) => (
-          <div
-            key={label}
-            className="rounded-lg border border-border bg-card p-6"
-          >
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="mt-2 text-2xl font-bold text-foreground">--</p>
-          </div>
-        ))}
+      {/* KPI Cards */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Environments"
+          value={envEntries.length}
+          icon={Globe}
+          description={`${totalVms} total VMs`}
+        />
+        <StatCard
+          label="VMs Running"
+          value={`${runningVms}/${totalVms}`}
+          icon={Server}
+          description={runningVms === totalVms ? 'All healthy' : 'Some offline'}
+        />
+        <StatCard
+          label="Recent Ops"
+          value={data.operations.length}
+          icon={Activity}
+          description={`${successRate}% success rate`}
+        />
+        <StatCard
+          label="Uptime"
+          value={data.loading ? '--' : `${uptimeHours}h`}
+          icon={Clock}
+          description="Orchestrator"
+        />
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-6">
-        <p className="text-sm text-muted-foreground">
-          Phase 1 foundation complete. Dashboard content will be built in Phase
-          3.
-        </p>
+      {/* Environments */}
+      <div>
+        <h2 className="text-sm font-medium text-foreground mb-3">Environments</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {envEntries.map(([name, status]) => (
+            <EnvironmentCard
+              key={name}
+              name={name}
+              vlan={status.vlan}
+              cidr={status.cidr}
+              vms={status.vms || []}
+              pipeline={status.pipeline}
+            />
+          ))}
+          {data.loading && envEntries.length === 0 && (
+            <div className="col-span-3 rounded-lg border border-border bg-card p-6 text-center">
+              <p className="text-sm text-muted-foreground">Loading environments...</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Recent Operations */}
+      <RecentOperations operations={data.operations} />
     </div>
   );
 }
