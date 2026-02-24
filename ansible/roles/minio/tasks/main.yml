@@ -121,6 +121,10 @@
     state: started
     enabled: yes
 
+# Flush handlers so MinIO restarts with new credentials before mc alias
+- name: Flush handlers (restart MinIO if env changed)
+  meta: flush_handlers
+
 - name: Wait for MinIO to be ready
   uri:
     url: "https://localhost:{{ minio_port }}/minio/health/live"
