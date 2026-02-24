@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name: 'orchestrator-ui',
-    script: 'server.js',
+    script: '.next/standalone/server.js',
     cwd: '/opt/orchestrator/ui',
     instances: 1,
     autorestart: true,

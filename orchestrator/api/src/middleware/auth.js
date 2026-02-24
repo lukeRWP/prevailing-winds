@@ -10,7 +10,7 @@ const ADMIN_ONLY_PATTERNS = [
 
 // Routes that are public (no auth required)
 function isPublicRoute(req) {
-  return req.path.startsWith('/health');
+  return req.path.startsWith('/health') || req.path === '/metrics';
 }
 
 // Check if this route is admin-only

@@ -12,7 +12,10 @@ async function proxyRequest(
   }
 
   const { path } = await params;
-  const apiPath = `/api/${path.join('/')}`;
+  // API routes use /api/ prefix, but health/metrics do not
+  const joined = path.join('/');
+  const needsApiPrefix = /^_[xyu pd]_\//.test(joined);
+  const apiPath = needsApiPrefix ? `/api/${joined}` : `/${joined}`;
   const url = new URL(apiPath, API_URL);
 
   // Forward query params
