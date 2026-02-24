@@ -40,7 +40,7 @@ async function getCredentials() {
 
 async function apiRequest(method, apiPath, body = null) {
   const { apiUrl, apiToken } = await getCredentials();
-  const url = new URL(`${apiUrl}${apiPath}`);
+  const url = new URL(`${apiUrl}/api2/json${apiPath}`);
 
   const options = {
     hostname: url.hostname,
