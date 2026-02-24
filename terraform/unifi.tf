@@ -57,12 +57,15 @@ resource "unifi_user" "runner" {
 # ---------------------------------------------------------------------------
 
 resource "unifi_user" "env_vms" {
-  for_each = var.environment != "shared" ? module.app_vms.vm_ids : {}
+  # Use var.vm_ips (not module.app_vms.vm_ids) so for_each keys survive
+  # terraform destroy — module outputs become {} when VMs are destroyed,
+  # which would orphan the DHCP reservations in UniFi.
+  for_each = var.environment != "shared" ? var.vm_ips : {}
 
   mac        = lower(module.app_vms.mac_addresses[each.key][0])
   name       = "${var.app_name}-${each.key}-${var.environment}"
-  note       = "${var.app_name} ${each.key} ${var.environment} (VM ${each.value})"
-  fixed_ip   = lookup(var.vm_ips, each.key, null)
+  note       = "${var.app_name} ${each.key} ${var.environment} (${each.value})"
+  fixed_ip   = each.value
   network_id = local.env_network_id
 }
 

@@ -4,6 +4,7 @@ const credentialGenerator = require('./credentialGenerator');
 const tfvarsGenerator = require('./tfvarsGenerator');
 const inventoryGenerator = require('./inventoryGenerator');
 const proxmoxClient = require('./proxmoxClient');
+const unifiClient = require('./unifiClient');
 const appRegistry = require('./appRegistry');
 const config = require('../config');
 const logger = require('../utils/logger');
@@ -98,6 +99,16 @@ async function destroyEnvironment(appName, envName, { ref } = {}) {
 
   // Step 1: Clean up orphan VMs via Proxmox API (pre-terraform)
   await cleanupOrphanVMs(appName, envName, 'Destroy');
+
+  // Step 1.5: Clean up ghost UniFi clients (DHCP lease records)
+  // Without this, old lease records block new DHCP reservations on rebuild
+  // with "FixedIpAlreadyUsedByClient" errors.
+  try {
+    const result = await unifiClient.cleanupEnvironmentClients(appName, envName);
+    logger.info('lifecycle', `Destroy: forgot ${result.forgotten} UniFi ghost clients`);
+  } catch (err) {
+    logger.warn('lifecycle', `Destroy: UniFi ghost cleanup failed (continuing): ${err.message}`);
+  }
 
   // Step 2: Generate tfvars so Terraform knows what to destroy
   await tfvarsGenerator.writeTfvars(appName, envName);
