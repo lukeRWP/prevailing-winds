@@ -31,6 +31,7 @@ rsync -a --delete \
   --exclude=node_modules \
   --exclude='*.db' \
   --exclude=.env \
+  --exclude=ecosystem.config.js \
   "${PW_REPO}/orchestrator/api/" "${API_DIR}/"
 
 # Install dependencies
