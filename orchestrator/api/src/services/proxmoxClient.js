@@ -437,9 +437,9 @@ async function prepareVMAccess(appName, envName, envConfig, sshPublicKey) {
   await Promise.all(rebootPromises);
 
   // Step 2.5: Verify VMs picked up DHCP-reserved IPs
-  const hosts = envConfig.hosts || {};
+  const manifestHosts = envConfig.hosts || {};
   for (const vm of vms) {
-    const hostCfg = Object.entries(hosts).find(([role]) => {
+    const hostCfg = Object.entries(manifestHosts).find(([role]) => {
       const roleKey = ROLE_KEY_MAP[role] || role;
       return vm.name === `${appName}-${roleKey}-${envName}`;
     });
