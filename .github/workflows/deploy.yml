@@ -43,7 +43,7 @@ jobs:
           sleep 10
 
           for i in $(seq 1 12); do
-            HEALTH=$(curl -sf "${{ vars.ORCHESTRATOR_URL }}/health" --max-time 5 2>/dev/null || echo '{"status":"down"}')
+            HEALTH=$(curl -sf "${{ vars.ORCHESTRATOR_URL }}/health/live" --max-time 5 2>/dev/null || echo '{"status":"down"}')
             STATUS=$(echo "$HEALTH" | jq -r '.status // .data.status // "unknown"')
             if [ "$STATUS" = "ok" ] || [ "$STATUS" = "healthy" ]; then
               echo "Orchestrator is healthy"
