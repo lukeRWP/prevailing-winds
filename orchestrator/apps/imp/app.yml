@@ -97,6 +97,7 @@ vmTemplate:
     storage:
       path: "/minio/health/live"
       port: 9000
+      scheme: https
     database:
       type: tcp
       port: 3306

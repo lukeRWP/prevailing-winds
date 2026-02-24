@@ -81,7 +81,7 @@
 #
 # Tag: post-provision  (always included in a full site.yml run)
 - name: Harden sudoers — scope deploy user to required commands
-  hosts: all
+  hosts: "{{ group_runner | default('pw_runners') }}:{{ group_monitoring | default('pw_monitoring') }}"
   become: yes
   vars:
     deploy_user: deploy
