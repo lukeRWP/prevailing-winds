@@ -179,6 +179,12 @@ variable "workstation_cidr" {
   default     = "10.0.87.0/24"
 }
 
+variable "remote_cidr" {
+  description = "Remote VPN/access CIDR (10.0.27.0/24)"
+  type        = string
+  default     = "10.0.27.0/24"
+}
+
 variable "env_cidrs" {
   description = "Map of environment name to CIDR for per-env security groups"
   type        = map(string)
@@ -395,7 +401,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "minio_en
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "orchestrator" {
   name    = "pw-orchestrator"
-  comment = "Orchestrator REST API from management network"
+  comment = "Orchestrator API + Dashboard from management, workstation, and remote networks"
 
   rule {
     type    = "in"
@@ -404,6 +410,24 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "orchestr
     dport   = "8500"
     source  = var.internal_cidr
     comment = "Orchestrator API from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3100"
+    source  = var.workstation_cidr
+    comment = "Orchestrator UI from workstations"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3100"
+    source  = var.remote_cidr
+    comment = "Orchestrator UI from remote network"
   }
 }
 
