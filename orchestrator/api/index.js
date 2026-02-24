@@ -9,6 +9,7 @@ const { errorHandler } = require('./src/middleware/errorHandler');
 const vault = require('./src/services/vault');
 const appRegistry = require('./src/services/appRegistry');
 const operationQueue = require('./src/services/operationQueue');
+const { httpRequestDuration } = require('./src/metrics');
 
 // Route modules
 const healthRoutes = require('./src/routes/health');
@@ -48,13 +49,20 @@ async function start() {
   // Input validation for :app and :env route params
   app.use(validateParams());
 
-  // Request logging
+  // Request logging + Prometheus HTTP duration tracking
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
-      const duration = Date.now() - start;
+      const durationMs = Date.now() - start;
       const level = res.statusCode >= 400 ? 'warn' : 'debug';
-      logger[level]('http', `${req.method} ${req.originalUrl} ${res.statusCode} (${duration}ms)`);
+      logger[level]('http', `${req.method} ${req.originalUrl} ${res.statusCode} (${durationMs}ms)`);
+
+      // Track in Prometheus (normalize route to avoid high cardinality)
+      const route = req.route?.path || req.path.replace(/[0-9a-f-]{36}/g, ':id');
+      httpRequestDuration.observe(
+        { method: req.method, route, status_code: String(res.statusCode) },
+        durationMs / 1000
+      );
     });
     next();
   });

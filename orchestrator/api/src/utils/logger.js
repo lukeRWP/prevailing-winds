@@ -1,37 +1,33 @@
-const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
-const currentLevel = LEVELS[process.env.LOG_LEVEL || 'info'] ?? LEVELS.info;
+const pino = require('pino');
 
-function timestamp() {
-  return new Date().toISOString();
-}
+const pinoLogger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  transport: process.env.NODE_ENV !== 'production' ? {
+    target: 'pino/file',
+    options: { destination: 1 },  // stdout
+  } : undefined,
+  formatters: {
+    level(label) {
+      return { level: label };
+    },
+  },
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
 
-function formatMessage(level, context, message, meta) {
-  const parts = [timestamp(), level.toUpperCase().padEnd(5)];
-  if (context) parts.push(`[${context}]`);
-  parts.push(message);
-  if (meta && Object.keys(meta).length > 0) {
-    parts.push(JSON.stringify(meta));
-  }
-  return parts.join(' ');
-}
-
-function shouldLog(level) {
-  return (LEVELS[level] ?? LEVELS.info) <= currentLevel;
-}
-
+// Preserve existing API: logger.info(context, message, meta)
 const logger = {
   info(context, message, meta) {
-    if (shouldLog('info')) console.log(formatMessage('info', context, message, meta));
+    pinoLogger.info({ context, ...meta }, message);
   },
   warn(context, message, meta) {
-    if (shouldLog('warn')) console.warn(formatMessage('warn', context, message, meta));
+    pinoLogger.warn({ context, ...meta }, message);
   },
   error(context, message, meta) {
-    if (shouldLog('error')) console.error(formatMessage('error', context, message, meta));
+    pinoLogger.error({ context, ...meta }, message);
   },
   debug(context, message, meta) {
-    if (shouldLog('debug')) console.log(formatMessage('debug', context, message, meta));
-  }
+    pinoLogger.debug({ context, ...meta }, message);
+  },
 };
 
 module.exports = logger;

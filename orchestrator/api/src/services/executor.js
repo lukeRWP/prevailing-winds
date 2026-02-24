@@ -10,6 +10,7 @@ const queue = require('./operationQueue');
 const appRegistry = require('./appRegistry');
 const tfvarsGenerator = require('./tfvarsGenerator');
 const ansibleVarsGenerator = require('./ansibleVarsGenerator');
+const { operationsTotal, operationDuration, operationsActive } = require('../metrics');
 
 const proxmoxClient = require('./proxmoxClient');
 
@@ -87,6 +88,8 @@ async function executeOperation(op) {
   const { id, app, env, type, ref, vars } = op;
   queue.markRunning(id);
   emitSSE(id, { event: 'status', data: 'running' });
+  operationsActive.inc({ app, env: env || 'shared' });
+  const opStartTime = Date.now();
 
   const tempFiles = [];
 
@@ -145,6 +148,9 @@ async function executeOperation(op) {
       queue.markSuccess(id);
       emitSSE(id, { event: 'status', data: 'success' });
       appendAndEmit(id, `[orchestrator] Operation completed successfully\n`);
+      operationsTotal.inc({ type, status: 'success', app, env: env || 'shared' });
+      operationDuration.observe({ type, app, env: env || 'shared' }, (Date.now() - opStartTime) / 1000);
+      operationsActive.dec({ app, env: env || 'shared' });
       if (op.callback_url) notifyCallback(op.callback_url, id, 'success').catch(() => {});
       return;
     }
@@ -268,6 +274,8 @@ async function executeOperation(op) {
     queue.markSuccess(id);
     emitSSE(id, { event: 'status', data: 'success' });
     appendAndEmit(id, `[orchestrator] Operation completed successfully\n`);
+    operationsTotal.inc({ type, status: 'success', app, env: env || 'shared' });
+    operationDuration.observe({ type, app, env: env || 'shared' }, (Date.now() - opStartTime) / 1000);
 
     if (op.callback_url) {
       notifyCallback(op.callback_url, id, 'success').catch(() => {});
@@ -277,11 +285,14 @@ async function executeOperation(op) {
     appendAndEmit(id, `[orchestrator] FAILED: ${err.message}\n`);
     emitSSE(id, { event: 'status', data: 'failed' });
     logger.error('executor', `Operation ${id} failed: ${err.message}`);
+    operationsTotal.inc({ type, status: 'failed', app, env: env || 'shared' });
+    operationDuration.observe({ type, app, env: env || 'shared' }, (Date.now() - opStartTime) / 1000);
 
     if (op.callback_url) {
       notifyCallback(op.callback_url, id, 'failed', err.message).catch(() => {});
     }
   } finally {
+    operationsActive.dec({ app, env: env || 'shared' });
     for (const f of tempFiles) {
       try { fs.unlinkSync(f); } catch { /* already cleaned */ }
     }
