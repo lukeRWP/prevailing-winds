@@ -17,6 +17,7 @@ export interface AppContextType {
   role: 'admin' | 'app';
   environments: string[];
   loading: boolean;
+  refreshApps: () => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -78,11 +79,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCookie('pw_app', app);
   }, []);
 
+  const refreshApps = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/_x_/auth/whoami');
+      const data = await res.json();
+      if (!data.success || !data.data) return;
+
+      const { availableApps } = data.data;
+      setApps(availableApps || []);
+
+      // If current app was deleted, switch to first available
+      if (currentApp && availableApps?.length > 0) {
+        const stillExists = availableApps.some((a: AppSummary) => a.name === currentApp);
+        if (!stillExists) {
+          const newApp = availableApps[0].name;
+          setCurrentAppState(newApp);
+          setCookie('pw_app', newApp);
+        }
+      }
+    } catch {
+      // silent
+    }
+  }, [currentApp]);
+
   const currentAppData = apps.find((a) => a.name === currentApp);
   const environments = currentAppData?.environments || [];
 
   return (
-    <AppContext.Provider value={{ currentApp, setCurrentApp, apps, role, environments, loading }}>
+    <AppContext.Provider value={{ currentApp, setCurrentApp, apps, role, environments, loading, refreshApps }}>
       {children}
     </AppContext.Provider>
   );

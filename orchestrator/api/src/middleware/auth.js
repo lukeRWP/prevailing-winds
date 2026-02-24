@@ -5,7 +5,8 @@ const config = require('../config');
 // Routes that require admin token (no app-scoped access)
 const ADMIN_ONLY_PATTERNS = [
   { method: 'GET', path: '/api/_x_/apps' },          // List all apps
-  { method: 'PUT', path: /^\/api\/_u_\/apps\/[^/]+\/manifest$/ }  // Register app manifest
+  { method: 'PUT', path: /^\/api\/_u_\/apps\/[^/]+\/manifest$/ },  // Register app manifest
+  { method: 'DELETE', path: /^\/api\/_d_\/apps\/[^/]+$/ }  // Delete app
 ];
 
 // Routes that are public (no auth required)

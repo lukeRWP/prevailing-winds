@@ -12,6 +12,7 @@ import {
   Zap,
   GitBranch,
   Settings,
+  Boxes,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { href: '/logs', label: 'Logs', icon: FileText },
   { href: '/metrics', label: 'Metrics', icon: BarChart3 },
   { href: '/actions', label: 'Actions', icon: Zap },
+  { href: '/apps', label: 'Apps', icon: Boxes },
   { href: '/config', label: 'Config', icon: Settings },
 ];
 

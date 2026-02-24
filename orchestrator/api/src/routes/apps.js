@@ -345,6 +345,25 @@ router.put('/api/_u_/apps/:app/manifest', (req, res) => {
   return success(res, { app: appName, path: manifestPath }, `App "${appName}" manifest registered`);
 });
 
+// Delete an app (admin-only)
+router.delete('/api/_d_/apps/:app', (req, res) => {
+  const { app: appName } = req.params;
+
+  const app = appRegistry.get(appName);
+  if (!app) return error(res, `App '${appName}' not found`, 404);
+
+  const appDir = path.join(config.appsDir, appName);
+  try {
+    fs.rmSync(appDir, { recursive: true, force: true });
+    appRegistry.loadApps();
+    logger.info('apps', `Deleted app "${appName}"`);
+    return success(res, { app: appName }, `App "${appName}" deleted`);
+  } catch (err) {
+    logger.error('apps', `Failed to delete app "${appName}": ${err.message}`);
+    return error(res, `Failed to delete app: ${err.message}`, 500);
+  }
+});
+
 // --- Change Engine Endpoints ---
 
 // Compute a change plan (preview cascading effects)
