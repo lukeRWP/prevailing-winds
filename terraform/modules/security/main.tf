@@ -417,6 +417,15 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "orchestr
     action  = "ACCEPT"
     proto   = "tcp"
     dport   = "3100"
+    source  = var.internal_cidr
+    comment = "Orchestrator UI from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3100"
     source  = var.workstation_cidr
     comment = "Orchestrator UI from workstations"
   }
