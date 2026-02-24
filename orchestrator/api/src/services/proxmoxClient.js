@@ -349,6 +349,54 @@ async function rebootVM(node, vmid) {
 }
 
 /**
+ * Check a VM's current IPv4 address on eth0 via guest agent.
+ */
+async function getVMIP(node, vmid) {
+  try {
+    const result = await guestExec(node, vmid, '/bin/bash', 'ip -4 -o addr show eth0 | awk \'{print $4}\' | cut -d/ -f1');
+    return result.outData.trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wait for a VM to have the expected IP (from DHCP reservation).
+ * Retries with networkctl renew, then a full reboot if needed.
+ */
+async function waitForExpectedIP(node, vmid, vmName, expectedIP, maxWaitMs = 120000) {
+  const start = Date.now();
+  let attempts = 0;
+
+  while (Date.now() - start < maxWaitMs) {
+    const currentIP = await getVMIP(node, vmid);
+    if (currentIP === expectedIP) {
+      logger.info(CONTEXT, `${vmName} has expected IP ${expectedIP}`);
+      return true;
+    }
+
+    attempts++;
+    logger.info(CONTEXT, `${vmName} has IP ${currentIP || '(none)'}, expected ${expectedIP} (attempt ${attempts})`);
+
+    // Try networkctl renew first, then full reboot
+    if (attempts <= 2) {
+      await guestExec(node, vmid, '/bin/bash', 'networkctl renew eth0 2>/dev/null || true');
+      await new Promise((r) => setTimeout(r, 10000));
+    } else if (attempts === 3) {
+      logger.info(CONTEXT, `${vmName}: forcing reboot for DHCP renewal`);
+      await apiRequest('POST', `/nodes/${node}/qemu/${vmid}/status/reboot`);
+      await new Promise((r) => setTimeout(r, 15000));
+      await waitForGuestAgent(node, vmid, 120000);
+    } else {
+      await new Promise((r) => setTimeout(r, 10000));
+    }
+  }
+
+  logger.warn(CONTEXT, `${vmName} did not get expected IP ${expectedIP} within ${maxWaitMs / 1000}s`);
+  return false;
+}
+
+/**
  * Prepare SSH access to all VMs in an environment.
  * After infra-apply creates VMs and DHCP reservations:
  * 1. Reboot VMs so they pick up DHCP-reserved IPs
@@ -387,6 +435,22 @@ async function prepareVMAccess(appName, envName, envConfig, sshPublicKey) {
     }
   });
   await Promise.all(rebootPromises);
+
+  // Step 2.5: Verify VMs picked up DHCP-reserved IPs
+  const hosts = envConfig.hosts || {};
+  for (const vm of vms) {
+    const hostCfg = Object.entries(hosts).find(([role]) => {
+      const roleKey = ROLE_KEY_MAP[role] || role;
+      return vm.name === `${appName}-${roleKey}-${envName}`;
+    });
+    if (hostCfg && hostCfg[1].ip) {
+      try {
+        await waitForExpectedIP(vm.node, vm.vmid, vm.name, hostCfg[1].ip);
+      } catch (err) {
+        logger.warn(CONTEXT, `IP verification failed for ${vm.name}: ${err.message}`);
+      }
+    }
+  }
 
   // Step 3: Re-deploy SSH key after reboot (in case cloud-init resets authorized_keys)
   for (const vm of vms) {
