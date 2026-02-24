@@ -111,6 +111,12 @@ export interface HealthStatus {
   version?: string;
 }
 
+// Secrets from GET /api/_x_/apps/:app/secrets or /api/_x_/infra/secrets
+export interface SecretsResponse {
+  path: string;
+  secrets: Record<string, string>;
+}
+
 // Shared infrastructure VMs (not from API — hardcoded known infra)
 export interface SharedVm {
   name: string;

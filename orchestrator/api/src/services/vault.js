@@ -84,6 +84,33 @@ async function writeSecret(path, data) {
   }
 }
 
+async function mergeSecret(secretPath, newData) {
+  await ensureToken();
+  if (!vaultClient) throw new Error('Vault not available — cannot write secrets');
+
+  const existing = await readSecret(secretPath) || {};
+  const merged = { ...existing, ...newData };
+  await writeSecret(secretPath, merged);
+  logger.info('vault', `Merged ${Object.keys(newData).length} key(s) at ${secretPath}`);
+  return { path: secretPath, keysUpdated: Object.keys(newData) };
+}
+
+async function deleteSecretKey(secretPath, key) {
+  await ensureToken();
+  if (!vaultClient) throw new Error('Vault not available — cannot delete secrets');
+
+  const existing = await readSecret(secretPath);
+  if (!existing || !(key in existing)) {
+    throw new Error(`Key '${key}' not found at ${secretPath}`);
+  }
+
+  const updated = { ...existing };
+  delete updated[key];
+  await writeSecret(secretPath, updated);
+  logger.info('vault', `Deleted key '${key}' from ${secretPath}`);
+  return { path: secretPath, keyDeleted: key, remainingKeys: Object.keys(updated).length };
+}
+
 async function getAppSecrets(app) {
   const vaultPrefix = `secret/data/apps/${app}`;
   const secrets = await readSecret(vaultPrefix);
@@ -97,4 +124,4 @@ async function getApiKey() {
   return secrets?.api_key || null;
 }
 
-module.exports = { initVault, readSecret, writeSecret, getAppSecrets, getApiKey };
+module.exports = { initVault, readSecret, writeSecret, mergeSecret, deleteSecretKey, getAppSecrets, getApiKey };

@@ -6,7 +6,11 @@ const config = require('../config');
 const ADMIN_ONLY_PATTERNS = [
   { method: 'GET', path: '/api/_x_/apps' },          // List all apps
   { method: 'PUT', path: /^\/api\/_u_\/apps\/[^/]+\/manifest$/ },  // Register app manifest
-  { method: 'DELETE', path: /^\/api\/_d_\/apps\/[^/]+$/ }  // Delete app
+  { method: 'DELETE', path: /^\/api\/_d_\/apps\/[^/]+$/ },  // Delete app
+  // Infra secrets — admin only
+  { method: 'GET', path: '/api/_x_/infra/secrets' },
+  { method: 'PUT', path: '/api/_u_/infra/secrets' },
+  { method: 'DELETE', path: /^\/api\/_d_\/infra\/secrets\/[^/]+$/ },
 ];
 
 // Routes that are public (no auth required)

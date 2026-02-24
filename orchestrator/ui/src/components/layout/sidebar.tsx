@@ -13,6 +13,7 @@ import {
   GitBranch,
   Settings,
   Boxes,
+  KeyRound,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: '/metrics', label: 'Metrics', icon: BarChart3 },
   { href: '/actions', label: 'Actions', icon: Zap },
   { href: '/apps', label: 'Apps', icon: Boxes },
+  { href: '/secrets', label: 'Secrets', icon: KeyRound },
   { href: '/config', label: 'Config', icon: Settings },
 ];
 

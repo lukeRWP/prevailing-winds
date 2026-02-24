@@ -21,6 +21,7 @@ const infraRoutes = require('./src/routes/infra');
 const databaseRoutes = require('./src/routes/database');
 const operationRoutes = require('./src/routes/operations');
 const lifecycleRoutes = require('./src/routes/lifecycle');
+const secretsRoutes = require('./src/routes/secrets');
 const selfUpdateRoutes = require('./src/routes/selfUpdate');
 
 async function start() {
@@ -80,6 +81,7 @@ async function start() {
   app.use(databaseRoutes);
   app.use(operationRoutes);
   app.use(lifecycleRoutes);
+  app.use(secretsRoutes);
   app.use(selfUpdateRoutes);
 
   // 404

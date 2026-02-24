@@ -17,6 +17,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   '/metrics': 'Metrics',
   '/actions': 'Actions',
   '/apps': 'Apps',
+  '/secrets': 'Secrets',
   '/config': 'Config',
 };
 
