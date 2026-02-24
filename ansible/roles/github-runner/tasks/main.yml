@@ -155,6 +155,25 @@
         state: present
         update_cache: yes
 
+- name: Install GitHub CLI for release workflows
+  block:
+    - name: Add GitHub CLI GPG key
+      apt_key:
+        url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+        state: present
+        keyring: /usr/share/keyrings/githubcli-archive-keyring.gpg
+
+    - name: Add GitHub CLI repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+        state: present
+
+    - name: Install GitHub CLI
+      apt:
+        name: gh
+        state: present
+        update_cache: yes
+
 - name: Install Ansible for CI deployments
   apt:
     name: ansible
