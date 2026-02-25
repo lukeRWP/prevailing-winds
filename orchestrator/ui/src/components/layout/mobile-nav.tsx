@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard,
   Network,
@@ -44,14 +45,11 @@ interface MobileNavProps {
 
 export function MobileNav({ open, onClose }: MobileNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { currentApp, apps } = useApp();
   const appData = apps.find((a) => a.name === currentApp);
 
-  async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+  function handleLogout() {
+    signOut({ callbackUrl: '/login' });
     onClose();
   }
 

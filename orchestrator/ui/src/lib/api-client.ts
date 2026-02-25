@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { auth, resolveApiToken } from '@/lib/auth';
 
 const API_URL = process.env.API_URL || 'http://localhost:8500';
 
@@ -7,11 +7,15 @@ export async function apiRequest<T = unknown>(
   path: string,
   body?: unknown
 ): Promise<{ success: boolean; message?: string; data?: T }> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('pw_token')?.value;
+  const session = await auth();
 
-  if (!token) {
+  if (!session?.user?.pwRole) {
     throw new Error('Not authenticated');
+  }
+
+  const token = resolveApiToken(session.user.pwRole, session.user.pwApp);
+  if (!token) {
+    throw new Error('No API token configured for your role');
   }
 
   const headers: Record<string, string> = {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth, resolveApiToken } from '@/lib/auth';
 
 const API_URL = process.env.API_URL || 'http://localhost:8500';
 
@@ -6,9 +7,17 @@ async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const token = request.cookies.get('pw_token')?.value;
-  if (!token) {
+  const session = await auth();
+  if (!session?.user?.pwRole) {
     return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+  }
+
+  const token = resolveApiToken(session.user.pwRole, session.user.pwApp);
+  if (!token) {
+    return NextResponse.json(
+      { success: false, message: 'No API token configured for your role' },
+      { status: 403 }
+    );
   }
 
   const { path } = await params;
