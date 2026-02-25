@@ -94,6 +94,33 @@ resource "proxmox_virtual_environment_firewall_rules" "cluster" {
     comment = "ICMP from workstation LAN"
   }
 
+  # --- Remote network (VPN) access to nodes ---
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = var.remote_cidr
+    comment = "SSH to nodes from remote network"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8006"
+    source  = var.remote_cidr
+    comment = "Proxmox web UI from remote network"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "icmp"
+    source  = var.remote_cidr
+    comment = "ICMP from remote network"
+  }
+
   rule {
     type    = "in"
     action  = "ACCEPT"
