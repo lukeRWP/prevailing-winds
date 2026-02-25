@@ -32,8 +32,8 @@ module.exports = {
     watch: false,
     max_memory_restart: '256M',
     env: {
-      PORT: 3100,
-      HOSTNAME: '0.0.0.0',
+      PORT: 3101,
+      HOSTNAME: '127.0.0.1',
       API_URL: 'http://localhost:8500',
       ...envFile,
     },
