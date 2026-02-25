@@ -180,7 +180,7 @@ function DurationByTypeChart() {
               fontSize: 12,
             }}
             labelStyle={{ color: 'hsl(var(--foreground))' }}
-            formatter={(value: number) => `${value}s`}
+            formatter={(value) => `${value}s`}
           />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           <Bar dataKey="avg" fill="#60a5fa" name="Average" radius={[0, 3, 3, 0]} />
@@ -233,7 +233,7 @@ function SuccessRateChart() {
               fontSize: 12,
             }}
             labelStyle={{ color: 'hsl(var(--foreground))' }}
-            formatter={(value: number) => `${value}%`}
+            formatter={(value) => `${value}%`}
           />
           <Line type="monotone" dataKey="rate" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} name="Success Rate" />
         </LineChart>
