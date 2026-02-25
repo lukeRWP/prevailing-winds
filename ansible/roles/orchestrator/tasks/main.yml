@@ -24,6 +24,7 @@
   loop:
     - { path: "{{ orchestrator_home }}" }
     - { path: "{{ orchestrator_api_dir }}" }
+    - { path: "{{ orchestrator_ui_dir }}" }
     - { path: "{{ orchestrator_apps_dir }}" }
     - { path: "{{ orchestrator_log_dir }}" }
     - { path: "{{ orchestrator_home }}/repos" }

@@ -18,6 +18,7 @@ set -euo pipefail
 ORCH_HOME="${ORCHESTRATOR_HOME:-/opt/orchestrator}"
 PW_REPO="${ORCH_HOME}/pw-repo"
 API_DIR="${ORCH_HOME}/api"
+UI_DIR="${ORCH_HOME}/ui"
 
 echo "=== Deploying Prevailing Winds Orchestrator ==="
 
@@ -38,6 +39,30 @@ rsync -a --delete \
 echo "Installing npm dependencies..."
 cd "${API_DIR}"
 npm ci --production 2>&1
+
+# Sync UI code
+echo "Syncing UI code..."
+rsync -a --delete \
+  --exclude=node_modules \
+  --exclude=.next \
+  --exclude='.env*' \
+  --exclude=ecosystem.config.js \
+  "${PW_REPO}/orchestrator/ui/" "${UI_DIR}/"
+
+# Install UI dependencies and build
+echo "Installing UI dependencies..."
+cd "${UI_DIR}"
+npm ci 2>&1
+
+echo "Building UI..."
+npm run build 2>&1
+
+# Next.js standalone output does not include static assets — copy them in
+echo "Copying static assets into standalone output..."
+cp -r .next/static .next/standalone/.next/static
+if [ -d public ]; then
+  cp -r public .next/standalone/public
+fi
 
 # Sync app manifests
 echo "Syncing app manifests..."
@@ -81,7 +106,7 @@ mkdir -p "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible/tmp"
 
 # Fix ownership (deploy user runs the orchestrator via PM2)
 ORCH_USER="${ORCH_USER:-deploy}"
-chown -R "${ORCH_USER}:${ORCH_USER}" "${API_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible"
+chown -R "${ORCH_USER}:${ORCH_USER}" "${API_DIR}" "${UI_DIR}" "${ORCH_HOME}/apps" "${ORCH_HOME}/ansible" "${ORCH_HOME}/terraform" "${ORCH_HOME}/certs" "${ORCH_HOME}/.ansible"
 
 # Restart service (skip if SKIP_RESTART=1, e.g. when called from self-update API)
 if [ "${SKIP_RESTART:-0}" = "1" ]; then
@@ -89,11 +114,14 @@ if [ "${SKIP_RESTART:-0}" = "1" ]; then
 else
   echo "Restarting orchestrator service..."
   if command -v pm2 &>/dev/null; then
-    cd "${API_DIR}"
     pm2 delete orchestrator-api 2>/dev/null || true
+    pm2 delete orchestrator-ui 2>/dev/null || true
+    cd "${API_DIR}"
+    pm2 start ecosystem.config.js
+    cd "${UI_DIR}"
     pm2 start ecosystem.config.js
     echo "=== Deploy complete ==="
-    pm2 status orchestrator-api
+    pm2 status
   elif systemctl is-active orchestrator &>/dev/null; then
     systemctl restart orchestrator
     echo "=== Deploy complete ==="

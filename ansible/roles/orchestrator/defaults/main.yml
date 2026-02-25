@@ -3,6 +3,7 @@ orchestrator_user: orchestrator
 orchestrator_group: orchestrator
 orchestrator_home: /opt/orchestrator
 orchestrator_api_dir: "{{ orchestrator_home }}/api"
+orchestrator_ui_dir: "{{ orchestrator_home }}/ui"
 orchestrator_apps_dir: "{{ orchestrator_home }}/apps"
 orchestrator_log_dir: /var/log/orchestrator
 orchestrator_secrets_dir: /run/orchestrator/secrets
