@@ -36,6 +36,14 @@ export function resolveApiToken(role: string | null, app?: string | null): strin
   return null;
 }
 
+/**
+ * Decode JWT payload without verification (signature already validated by Auth.js).
+ */
+function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const payload = jwt.split('.')[1];
+  return JSON.parse(Buffer.from(payload, 'base64url').toString());
+}
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [
     MicrosoftEntraID({
@@ -56,8 +64,12 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   callbacks: {
     jwt({ token, account, profile }) {
       if (account && profile) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const groups: string[] = (profile as any).groups || [];
+        // Groups claim is in the ID token, not the userinfo profile
+        let groups: string[] = [];
+        if (account.id_token) {
+          const idTokenPayload = decodeJwtPayload(account.id_token);
+          groups = (idTokenPayload.groups as string[]) || [];
+        }
 
         // Detect group overage (>200 groups, Entra omits claim)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
