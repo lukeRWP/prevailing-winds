@@ -583,7 +583,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_c
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_orchestrator" {
   name    = "pw-egress-orchestrator"
-  comment = "Orchestrator-specific egress (Vault API)"
+  comment = "Orchestrator-specific egress (Vault API, Proxmox API)"
 
   rule {
     type    = "out"
@@ -591,6 +591,14 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_o
     proto   = "tcp"
     dport   = "8200"
     comment = "Vault API outbound"
+  }
+
+  rule {
+    type    = "out"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8006"
+    comment = "Proxmox API outbound"
   }
 }
 
