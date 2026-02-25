@@ -2,7 +2,7 @@
 # These files are gitignored — do NOT commit real values
 #
 # VLAN-per-environment topology:
-#   shared = VLAN 87  (10.0.5.0/24)   — Vault, Runner
+#   shared = VLAN 87  (10.0.5.0/24)   — Vault, Runner, Orchestrator
 #   dev    = VLAN 100 (10.0.100.0/24) — Dev VMs
 #   qa     = VLAN 110 (10.0.110.0/24) — QA VMs
 #   prod   = VLAN 120 (10.0.120.0/24) — Prod VMs
@@ -20,11 +20,11 @@ vm_ips = {
   minio  = "10.0.100.13"
 }
 
-# External NIC IPs on VLAN 7 (only for client and server)
-vm_external_ips = {
-  client = "10.0.3.x"
-  server = "10.0.3.x"
-}
+# External NIC IPs on VLAN 7 — ONLY set for prod
+# Dev and QA do not get external network access (enable_external_network is false)
+# vm_external_ips = {
+#   client = "10.0.3.x"
+# }
 
 # --- Shared workspace only (shared.tfvars) ---
 # deploy_shared          = true
@@ -35,3 +35,6 @@ vm_external_ips = {
 
 # --- Prod workspace only (prod.tfvars) ---
 # prod_db_node = "prx001"   # Anti-affinity: DB on different node than server
+# vm_external_ips = {
+#   client = "10.0.3.30"
+# }

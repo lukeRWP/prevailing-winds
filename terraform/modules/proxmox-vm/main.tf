@@ -110,6 +110,28 @@ variable "balloon_minimum" {
 }
 
 # ---------------------------------------------------------------
+# IP Filter — populate ipfilter sets so ipfilter=true works
+# Without these, ipfilter drops ALL outbound traffic (empty set = deny all).
+# ---------------------------------------------------------------
+variable "internal_ip" {
+  description = "Fixed IP for this VM on net0 (populates ipfilter-net0)"
+  type        = string
+  default     = ""
+}
+
+variable "external_ip" {
+  description = "Fixed IP for this VM on net1/external NIC (populates ipfilter-net1)"
+  type        = string
+  default     = ""
+}
+
+variable "additional_vlan_ips" {
+  description = "Fixed IPs for additional NICs in VLAN order (populates ipfilter-net2+)"
+  type        = list(string)
+  default     = []
+}
+
+# ---------------------------------------------------------------
 # VM Resource
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_vm" "vm" {
@@ -232,6 +254,50 @@ resource "proxmox_virtual_environment_firewall_rules" "vm" {
       iface          = "net1"
       comment        = "${rule.value} on external"
     }
+  }
+}
+
+# ---------------------------------------------------------------
+# Proxmox Firewall — IP filter sets
+# ipfilter=true requires populated ipsets; without them all outbound is dropped.
+# DHCP bootstrap is handled by dhcp=true in firewall options.
+# ---------------------------------------------------------------
+resource "proxmox_virtual_environment_firewall_ipset" "ipfilter_net0" {
+  count     = var.internal_ip != "" ? 1 : 0
+  node_name = var.target_node
+  vm_id     = proxmox_virtual_environment_vm.vm.vm_id
+  name      = "ipfilter-net0"
+  comment   = "Managed by Terraform"
+
+  cidr {
+    name    = var.internal_ip
+    comment = "Fixed IP for net0"
+  }
+}
+
+resource "proxmox_virtual_environment_firewall_ipset" "ipfilter_net1" {
+  count     = var.external_ip != "" ? 1 : 0
+  node_name = var.target_node
+  vm_id     = proxmox_virtual_environment_vm.vm.vm_id
+  name      = "ipfilter-net1"
+  comment   = "Managed by Terraform"
+
+  cidr {
+    name    = var.external_ip
+    comment = "Fixed IP for net1 (external)"
+  }
+}
+
+resource "proxmox_virtual_environment_firewall_ipset" "ipfilter_additional" {
+  count     = length(var.additional_vlan_ips)
+  node_name = var.target_node
+  vm_id     = proxmox_virtual_environment_vm.vm.vm_id
+  name      = "ipfilter-net${count.index + (var.external_vlan_tag > 0 ? 2 : 1)}"
+  comment   = "Managed by Terraform"
+
+  cidr {
+    name    = var.additional_vlan_ips[count.index]
+    comment = "Fixed IP for additional VLAN ${count.index}"
   }
 }
 

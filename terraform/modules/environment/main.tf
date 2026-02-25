@@ -39,6 +39,24 @@ variable "db_target_node" {
   default     = ""
 }
 
+variable "vm_ips" {
+  description = "Map of role to fixed IP on environment VLAN (for ipfilter)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "vm_external_ips" {
+  description = "Map of role to fixed IP on VLAN 7 (for ipfilter on external NIC)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "enable_external_network" {
+  description = "Enable external VLAN 7 NIC on client VMs. Only prod should have this."
+  type        = bool
+  default     = false
+}
+
 locals {
   # Only create app VMs for actual environments (not shared)
   create_vms = var.environment != "shared"
@@ -58,8 +76,8 @@ locals {
   }
 
   # Roles that need external/production network (VLAN 7)
-  # Only client (nginx) needs external ingress; server is internal API only
-  external_roles = toset(["client"])
+  # Only client (nginx) needs external ingress; only prod gets external access
+  external_roles = var.enable_external_network ? toset(["client"]) : toset([])
 
   # Base security groups applied to all VMs (flat string lookups)
   base_sg = [
@@ -129,6 +147,8 @@ module "vms" {
   cloud_init_snippet_id             = var.cloud_init_snippet_id
   firewall_security_groups          = local.role_security_groups[each.key]
   external_firewall_security_groups = local.role_external_security_groups[each.key]
+  internal_ip                       = try(var.vm_ips[each.key], "")
+  external_ip                       = contains(local.external_roles, each.key) ? try(var.vm_external_ips[each.key], "") : ""
 }
 
 output "vm_ids" {

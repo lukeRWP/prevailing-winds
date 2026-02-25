@@ -6,17 +6,20 @@ moved {
 module "app_vms" {
   source = "./modules/environment"
 
-  app_name              = var.app_name
-  environment           = var.environment
-  target_node           = var.target_node
-  network_bridge        = var.network_bridge
-  template_id           = var.template_id
-  ssh_public_key        = var.ssh_public_key
-  cloud_init_snippet_id = local.cloud_init_snippet_id
-  security_groups       = local.sg_names
-  env_vlan_tag          = var.env_vlan_tag
-  pool_id               = "${var.app_name}-${var.environment}"
-  db_target_node        = var.environment == "prod" ? var.prod_db_node : ""
+  app_name                = var.app_name
+  environment             = var.environment
+  target_node             = var.target_node
+  network_bridge          = var.network_bridge
+  template_id             = var.template_id
+  ssh_public_key          = var.ssh_public_key
+  cloud_init_snippet_id   = local.cloud_init_snippet_id
+  security_groups         = local.sg_names
+  env_vlan_tag            = var.env_vlan_tag
+  pool_id                 = "${var.app_name}-${var.environment}"
+  db_target_node          = var.environment == "prod" ? var.prod_db_node : ""
+  vm_ips                  = var.vm_ips
+  vm_external_ips         = var.vm_external_ips
+  enable_external_network = var.environment == "prod"
 }
 
 # ---------------------------------------------------------------------------
@@ -42,11 +45,13 @@ module "vault" {
   pool_id                  = "pw-shared"
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
+  internal_ip              = var.vault_ip
   firewall_security_groups = [
     local.sg_names.ssh,
     local.sg_names.icmp,
     local.sg_names.monitoring,
     local.sg_names.vault,
+    local.sg_names.egress_base,
   ]
 }
 
@@ -69,10 +74,13 @@ module "runner" {
   pool_id                  = "pw-shared"
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
+  internal_ip              = var.runner_ip
+  additional_vlan_ips      = var.runner_env_ips
   firewall_security_groups = [
     local.sg_names.ssh,
     local.sg_names.icmp,
     local.sg_names.monitoring,
+    local.sg_names.egress_base,
   ]
 }
 
@@ -95,10 +103,14 @@ module "orchestrator" {
   pool_id                  = "pw-shared"
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
+  internal_ip              = var.orchestrator_ip
+  additional_vlan_ips      = var.orchestrator_env_ips
   firewall_security_groups = [
     local.sg_names.ssh,
     local.sg_names.icmp,
     local.sg_names.monitoring,
     local.sg_names.orchestrator,
+    local.sg_names.egress_base,
+    local.sg_names.egress_orchestrator,
   ]
 }

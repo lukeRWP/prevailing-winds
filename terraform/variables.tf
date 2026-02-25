@@ -166,9 +166,21 @@ variable "vm_ips" {
 }
 
 variable "vm_external_ips" {
-  description = "Map of role name to fixed IP on VLAN 7 for external-facing VMs (client, server)"
+  description = "Map of role name to fixed IP on VLAN 7 for external-facing VMs (prod only)"
   type        = map(string)
   default     = {}
+}
+
+variable "orchestrator_env_ips" {
+  description = "Orchestrator IPs on environment VLANs, ordered to match additional_vlans [100, 110, 120]"
+  type        = list(string)
+  default     = ["10.0.100.2", "10.0.110.2", "10.0.120.2"]
+}
+
+variable "runner_env_ips" {
+  description = "Runner IPs on environment VLANs, ordered to match additional_vlans [100, 110, 120]"
+  type        = list(string)
+  default     = []
 }
 
 # ---------------------------------------------------------------------------

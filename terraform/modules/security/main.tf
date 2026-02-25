@@ -552,6 +552,22 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_c
 }
 
 # ---------------------------------------------------------------
+# Egress — Orchestrator: Vault API
+# ---------------------------------------------------------------
+resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_orchestrator" {
+  name    = "pw-egress-orchestrator"
+  comment = "Orchestrator-specific egress (Vault API)"
+
+  rule {
+    type    = "out"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8200"
+    comment = "Vault API outbound"
+  }
+}
+
+# ---------------------------------------------------------------
 # Outputs — security group names for VM modules
 # ---------------------------------------------------------------
 output "sg_names" {
@@ -564,7 +580,8 @@ output "sg_names" {
     orchestrator  = proxmox_virtual_environment_cluster_firewall_security_group.orchestrator.name
     egress_base   = proxmox_virtual_environment_cluster_firewall_security_group.egress_base.name
     egress_app    = proxmox_virtual_environment_cluster_firewall_security_group.egress_app.name
-    egress_client = proxmox_virtual_environment_cluster_firewall_security_group.egress_client.name
+    egress_client       = proxmox_virtual_environment_cluster_firewall_security_group.egress_client.name
+    egress_orchestrator = proxmox_virtual_environment_cluster_firewall_security_group.egress_orchestrator.name
     # Per-environment groups (map of env_key → group name)
     app_env   = { for k, v in proxmox_virtual_environment_cluster_firewall_security_group.app_env : k => v.name }
     db_env    = { for k, v in proxmox_virtual_environment_cluster_firewall_security_group.db_env : k => v.name }
