@@ -7,6 +7,8 @@ const ADMIN_ONLY_PATTERNS = [
   { method: 'GET', path: '/api/_x_/apps' },          // List all apps
   { method: 'PUT', path: /^\/api\/_u_\/apps\/[^/]+\/manifest$/ },  // Register app manifest
   { method: 'DELETE', path: /^\/api\/_d_\/apps\/[^/]+$/ },  // Delete app
+  // Entra config — admin only
+  { method: 'GET', path: '/api/_x_/entra/config' },
   // Infra secrets — admin only
   { method: 'GET', path: '/api/_x_/infra/secrets' },
   { method: 'PUT', path: '/api/_u_/infra/secrets' },

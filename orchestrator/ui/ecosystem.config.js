@@ -25,7 +25,7 @@ const envFile = loadEnvFile(path.join(__dirname, '..', 'ui.env'));
 module.exports = {
   apps: [{
     name: 'orchestrator-ui',
-    script: '.next/standalone/server.js',
+    script: 'scripts/start.js',
     cwd: '/opt/orchestrator/ui',
     instances: 1,
     autorestart: true,

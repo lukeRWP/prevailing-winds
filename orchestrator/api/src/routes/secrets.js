@@ -139,6 +139,22 @@ router.delete('/api/_d_/apps/:app/envs/:env/secrets/:key', async (req, res) => {
   }
 });
 
+// --- Entra OAuth config (admin-only, consumed by UI startup) ---
+
+router.get('/api/_x_/entra/config', async (req, res) => {
+  try {
+    const vaultPath = 'secret/data/pw/entra';
+    const secrets = await vault.readSecret(vaultPath);
+    return success(res, {
+      path: vaultPath,
+      secrets: secrets || {},
+    }, `Retrieved ${secrets ? Object.keys(secrets).length : 0} secret(s)`);
+  } catch (err) {
+    logger.error('secrets', `Failed to read Entra config: ${err.message}`);
+    return error(res, err.message, 500);
+  }
+});
+
 // --- Infrastructure secrets (admin-only via auth middleware) ---
 
 router.get('/api/_x_/infra/secrets', async (req, res) => {
