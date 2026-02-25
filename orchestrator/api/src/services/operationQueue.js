@@ -152,5 +152,6 @@ module.exports = {
   init, create, get, list,
   markRunning, markSuccess, markFailed, cancel,
   appendOutput, hasRunningOp, getNextQueued, close,
+  getDb: () => db,
   STATUSES
 };

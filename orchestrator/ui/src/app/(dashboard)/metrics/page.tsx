@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { Activity, Clock, CheckCircle2, BarChart3, ExternalLink } from 'lucide-react';
+import {
+  AreaChart, Area, BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { useApp } from '@/hooks/use-app';
 import { AppSection } from '@/components/layout/app-section';
 import type { AppSummary } from '@/lib/app-context';
-import type { Operation, HealthStatus } from '@/types/api';
+import type {
+  Operation, HealthStatus, OpsOverTimeBucket, DurationByType, SuccessRateBucket,
+} from '@/types/api';
 
 export default function MetricsPage() {
   const { apps } = useApp();
@@ -47,6 +53,13 @@ export default function MetricsPage() {
         </div>
       )}
 
+      {/* Global charts */}
+      <OpsOverTimeChart />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DurationByTypeChart />
+        <SuccessRateChart />
+      </div>
+
       {/* Per-app metrics */}
       {apps.map((app) => (
         <AppSection key={app.name} app={app}>
@@ -66,13 +79,170 @@ export default function MetricsPage() {
           <GrafanaLink label="MySQL" env="prod" />
         </div>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        Prometheus metrics (prom-client) and inline charts (Recharts) will be added in Phase 7/8.
-      </p>
     </div>
   );
 }
+
+// --- Charts ---
+
+function OpsOverTimeChart() {
+  const [data, setData] = useState<OpsOverTimeBucket[]>([]);
+
+  useEffect(() => {
+    async function fetch_() {
+      try {
+        const res = await fetch('/api/proxy/_x_/metrics/ops-over-time?days=30');
+        const json = await res.json();
+        if (json.success) setData(json.data);
+      } catch { /* silent */ }
+    }
+    fetch_();
+    const interval = setInterval(fetch_, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-sm font-medium text-foreground mb-3">Operations Over Time (30 days)</h3>
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis
+            dataKey="bucket"
+            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tickFormatter={(v) => v.slice(5)}
+          />
+          <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} allowDecimals={false} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsl(var(--card))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: 6,
+              fontSize: 12,
+            }}
+            labelStyle={{ color: 'hsl(var(--foreground))' }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Area type="monotone" dataKey="success" stackId="1" stroke="#34d399" fill="#34d399" fillOpacity={0.6} />
+          <Area type="monotone" dataKey="failed" stackId="1" stroke="#f87171" fill="#f87171" fillOpacity={0.6} />
+          <Area type="monotone" dataKey="cancelled" stackId="1" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.3} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function DurationByTypeChart() {
+  const [data, setData] = useState<DurationByType[]>([]);
+
+  useEffect(() => {
+    async function fetch_() {
+      try {
+        const res = await fetch('/api/proxy/_x_/metrics/duration-by-type');
+        const json = await res.json();
+        if (json.success) setData(json.data);
+      } catch { /* silent */ }
+    }
+    fetch_();
+    const interval = setInterval(fetch_, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (data.length === 0) return null;
+
+  // Convert ms to seconds for display
+  const chartData = data.map((d) => ({
+    type: d.type,
+    avg: Math.round(d.avgMs / 1000),
+    p95: Math.round(d.p95Ms / 1000),
+  }));
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-sm font-medium text-foreground mb-3">Duration by Type (seconds)</h3>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={chartData} layout="vertical">
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+          <YAxis
+            dataKey="type"
+            type="category"
+            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            width={80}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsl(var(--card))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: 6,
+              fontSize: 12,
+            }}
+            labelStyle={{ color: 'hsl(var(--foreground))' }}
+            formatter={(value: number) => `${value}s`}
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Bar dataKey="avg" fill="#60a5fa" name="Average" radius={[0, 3, 3, 0]} />
+          <Bar dataKey="p95" fill="#fbbf24" name="P95" radius={[0, 3, 3, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SuccessRateChart() {
+  const [data, setData] = useState<SuccessRateBucket[]>([]);
+
+  useEffect(() => {
+    async function fetch_() {
+      try {
+        const res = await fetch('/api/proxy/_x_/metrics/success-rate?days=14');
+        const json = await res.json();
+        if (json.success) setData(json.data);
+      } catch { /* silent */ }
+    }
+    fetch_();
+    const interval = setInterval(fetch_, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-sm font-medium text-foreground mb-3">Success Rate (14 days)</h3>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis
+            dataKey="bucket"
+            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tickFormatter={(v) => v.slice(5)}
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}%`}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsl(var(--card))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: 6,
+              fontSize: 12,
+            }}
+            labelStyle={{ color: 'hsl(var(--foreground))' }}
+            formatter={(value: number) => `${value}%`}
+          />
+          <Line type="monotone" dataKey="rate" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} name="Success Rate" />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// --- Per-app metrics ---
 
 function AppMetrics({ appName }: { appName: string }) {
   const [operations, setOperations] = useState<Operation[]>([]);
@@ -160,6 +330,8 @@ function AppMetrics({ appName }: { appName: string }) {
     </div>
   );
 }
+
+// --- Helpers ---
 
 function MetricField({ label, value }: { label: string; value: string }) {
   return (

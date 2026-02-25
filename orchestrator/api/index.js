@@ -23,6 +23,9 @@ const operationRoutes = require('./src/routes/operations');
 const lifecycleRoutes = require('./src/routes/lifecycle');
 const secretsRoutes = require('./src/routes/secrets');
 const selfUpdateRoutes = require('./src/routes/selfUpdate');
+const metricsDataRoutes = require('./src/routes/metricsData');
+const logsRoutes = require('./src/routes/logs');
+const serverLogsRoutes = require('./src/routes/serverLogs');
 
 async function start() {
   logger.info('server', `Starting orchestrator API (${config.nodeEnv})`);
@@ -83,6 +86,9 @@ async function start() {
   app.use(lifecycleRoutes);
   app.use(secretsRoutes);
   app.use(selfUpdateRoutes);
+  app.use(metricsDataRoutes);
+  app.use(logsRoutes);
+  app.use(serverLogsRoutes);
 
   // 404
   app.use((req, res) => {

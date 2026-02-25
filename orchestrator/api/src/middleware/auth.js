@@ -13,6 +13,10 @@ const ADMIN_ONLY_PATTERNS = [
   { method: 'GET', path: '/api/_x_/infra/secrets' },
   { method: 'PUT', path: '/api/_u_/infra/secrets' },
   { method: 'DELETE', path: /^\/api\/_d_\/infra\/secrets\/[^/]+$/ },
+  // Metrics data — admin only
+  { method: 'GET', path: /^\/api\/_x_\/metrics\// },
+  // Structured logs — admin only
+  { method: 'GET', path: '/api/_x_/logs' },
 ];
 
 // Routes that are public (no auth required)

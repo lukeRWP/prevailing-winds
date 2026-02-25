@@ -117,6 +117,42 @@ export interface SecretsResponse {
   secrets: Record<string, string>;
 }
 
+// Metrics aggregation from GET /api/_x_/metrics/*
+export interface OpsOverTimeBucket {
+  bucket: string;
+  success: number;
+  failed: number;
+  cancelled: number;
+  queued: number;
+  running: number;
+}
+
+export interface DurationByType {
+  type: string;
+  total: number;
+  avgMs: number;
+  minMs: number;
+  maxMs: number;
+  p95Ms: number;
+}
+
+export interface SuccessRateBucket {
+  bucket: string;
+  success: number;
+  failed: number;
+  total: number;
+  rate: number;
+}
+
+// Structured log entry from GET /api/_x_/logs
+export interface LogEntry {
+  level: string;
+  time: string;
+  context: string;
+  msg: string;
+  [key: string]: unknown;
+}
+
 // Shared infrastructure VMs (not from API — hardcoded known infra)
 export interface SharedVm {
   name: string;

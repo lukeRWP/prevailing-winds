@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Terminal } from 'lucide-react';
 import { VmCard } from '@/components/environments/vm-card';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/hooks/use-app';
@@ -136,6 +136,18 @@ export default function EnvironmentDetailPage() {
           })}
         </div>
       </div>
+
+      {/* Server Logs Link */}
+      <Link
+        href={`/environments/${envName}/logs`}
+        className="flex items-center gap-2 rounded-lg border border-border bg-card p-4 hover:bg-accent/50 transition-colors group"
+      >
+        <Terminal className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+        <div>
+          <p className="text-sm font-medium text-foreground">Server Logs</p>
+          <p className="text-xs text-muted-foreground">Stream live logs from VMs (App, MySQL, Nginx, MinIO)</p>
+        </div>
+      </Link>
 
       {/* Status Error */}
       {status?.vmsError && (
