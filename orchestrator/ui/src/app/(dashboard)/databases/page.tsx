@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Database, Copy, Check, Eye, EyeOff, RefreshCw, ArrowRightLeft,
-  HardDrive, FileUp, Wrench, Table,
+  HardDrive, ArchiveRestore, FileUp, Wrench, Table,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/hooks/use-app';
@@ -230,6 +230,12 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
               icon={HardDrive}
               label="Backup"
               onClick={() => triggerAction('db/backup')}
+              disabled={actionLoading}
+            />
+            <ActionButton
+              icon={ArchiveRestore}
+              label="Restore"
+              onClick={() => triggerAction('db/restore')}
               disabled={actionLoading}
             />
             <ActionButton

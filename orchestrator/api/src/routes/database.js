@@ -66,6 +66,14 @@ router.post('/api/_y_/apps/:app/envs/:env/db/backup', async (req, res) => {
   return success(res, { opId }, 'Database backup queued', 202);
 });
 
+router.post('/api/_y_/apps/:app/envs/:env/db/restore', async (req, res) => {
+  const ctx = requireAppEnv(req, res);
+  if (!ctx) return;
+  const { ref, vars, callbackUrl } = req.body || {};
+  const opId = await executor.enqueue(ctx.appName, ctx.envName, 'db-restore', { ref, vars, callbackUrl });
+  return success(res, { opId }, 'Database restore queued', 202);
+});
+
 router.post('/api/_y_/apps/:app/envs/:env/db/seed', async (req, res) => {
   const ctx = requireAppEnv(req, res);
   if (!ctx) return;
