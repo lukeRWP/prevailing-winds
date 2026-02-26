@@ -142,6 +142,18 @@ export interface GitPR {
   author: string;
 }
 
+// DB connection info from GET /api/_x_/apps/:app/envs/:env/db/connection
+export interface DbConnectionInfo {
+  host: string;
+  port: number;
+  user: string;
+  password: string | null;
+  rootPassword: string | null;
+  sslUser: string | null;
+  sslPassword: string | null;
+  databases: string[];
+}
+
 // Health status from GET /health/status
 export interface HealthStatus {
   status: string;
