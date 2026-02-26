@@ -23,7 +23,7 @@ const EXTERNAL_VLAN = {
 
 // Layout constants
 const ENV_GROUP_WIDTH = 320;
-const ENV_GROUP_HEIGHT = 360;
+const ENV_GROUP_HEIGHT = 430;
 const ENV_GROUP_GAP = 40;
 const APP_GROUP_PADDING_X = 30;
 const APP_GROUP_PADDING_TOP = 50;
@@ -34,7 +34,7 @@ const ENV_START_Y = 320;
 const MGMT_START_X = 80;
 const MGMT_START_Y = 40;
 const VM_WIDTH = 130;
-const VM_HEIGHT = 70;
+const VM_HEIGHT = 100;
 const VM_GAP_X = 15;
 const VM_GAP_Y = 15;
 
@@ -208,7 +208,17 @@ export function buildMultiAppTopology(appsData: AppTopologyInput[]): TopologyDat
             status: vmStatus?.status || 'unknown',
             vmid: vmStatus?.vmid,
             node: vmStatus?.node,
+            cpu: vmStatus?.cpu,
+            maxcpu: vmStatus?.maxcpu,
+            mem: vmStatus?.mem,
+            maxmem: vmStatus?.maxmem,
+            disk: vmStatus?.disk,
+            maxdisk: vmStatus?.maxdisk,
+            uptime: vmStatus?.uptime,
+            netin: vmStatus?.netin,
+            netout: vmStatus?.netout,
             envName: env.name,
+            appName,
             isShared: false,
           },
         });
@@ -242,22 +252,23 @@ export function buildMultiAppTopology(appsData: AppTopologyInput[]): TopologyDat
   });
 
   // --- External VLAN node ---
-  // Position to the right of the widest app's environments
+  // Position below environments, centered horizontally
   const maxEnvCount = Math.max(...appsData.map((a) => a.environments.length), 1);
   const totalEnvWidth = maxEnvCount * (ENV_GROUP_WIDTH + ENV_GROUP_GAP) - ENV_GROUP_GAP;
+  const externalWidth = totalEnvWidth;
   nodes.push({
     id: 'vlan-external',
     type: 'vlanNode',
     position: {
-      x: ENV_START_X + totalEnvWidth + 60,
-      y: ENV_START_Y + 60,
+      x: ENV_START_X,
+      y: currentAppY + 40,
     },
     data: {
       label: EXTERNAL_VLAN.label,
       vlanId: EXTERNAL_VLAN.id,
       cidr: EXTERNAL_VLAN.cidr,
-      width: 180,
-      height: 140,
+      width: Math.max(externalWidth, 320),
+      height: 100,
       isExternal: true,
     },
   });

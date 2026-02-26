@@ -39,7 +39,15 @@ export interface VmStatus {
   node: string;
   role: string;
   status: 'running' | 'stopped' | 'unknown';
-  orphaned?: boolean;
+  cpu?: number;
+  maxcpu?: number;
+  mem?: number;
+  maxmem?: number;
+  disk?: number;
+  maxdisk?: number;
+  uptime?: number;
+  netin?: number;
+  netout?: number;
 }
 
 // App details from GET /api/_x_/apps/:app

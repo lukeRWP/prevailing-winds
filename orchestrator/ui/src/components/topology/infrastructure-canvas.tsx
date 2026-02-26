@@ -14,7 +14,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { VmNode } from './nodes/vm-node';
+import { VmNode, type VmNodeData } from './nodes/vm-node';
 import { EnvGroupNode } from './nodes/env-group-node';
 import { AppGroupNode } from './nodes/app-group-node';
 import { VlanNode } from './nodes/vlan-node';
@@ -55,11 +55,11 @@ export function InfrastructureCanvas({
 
   const [nodes, , onNodesChange] = useNodesState(topology.nodes);
   const [edges, , onEdgesChange] = useEdgesState(topology.edges);
-  const [selectedVm, setSelectedVm] = useState<Record<string, unknown> | null>(null);
+  const [selectedVm, setSelectedVm] = useState<VmNodeData | null>(null);
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     if (node.type === 'vmNode') {
-      setSelectedVm(node.data as Record<string, unknown>);
+      setSelectedVm(node.data as unknown as VmNodeData);
     }
   }, []);
 
@@ -108,12 +108,10 @@ export function InfrastructureCanvas({
 
       {selectedVm && (
         <VmDetailPanel
-          data={selectedVm as VmDetailPanelData}
+          data={selectedVm}
           onClose={() => setSelectedVm(null)}
         />
       )}
     </div>
   );
 }
-
-type VmDetailPanelData = Parameters<typeof VmDetailPanel>[0]['data'];

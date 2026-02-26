@@ -149,7 +149,15 @@ async function findEnvironmentVMs(appName, envName, envConfig) {
           node,
           role: match.role,
           status: vm.status,
-          orphaned: true,
+          cpu: vm.cpu,
+          maxcpu: vm.maxcpu,
+          mem: vm.mem,
+          maxmem: vm.maxmem,
+          disk: vm.disk,
+          maxdisk: vm.maxdisk,
+          uptime: vm.uptime,
+          netin: vm.netin,
+          netout: vm.netout,
         });
       }
     }
