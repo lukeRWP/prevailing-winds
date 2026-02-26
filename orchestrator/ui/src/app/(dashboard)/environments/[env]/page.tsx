@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Terminal } from 'lucide-react';
+import { ArrowLeft, Terminal, Play, Square, RotateCcw } from 'lucide-react';
 import { VmCard } from '@/components/environments/vm-card';
+import { ConfirmationDialog } from '@/components/actions/confirmation-dialog';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/hooks/use-app';
 import type { EnvironmentStatus, EnvironmentManifest } from '@/types/api';
@@ -18,12 +19,15 @@ const ENV_BADGE: Record<string, string> = {
 export default function EnvironmentDetailPage() {
   const params = useParams<{ env: string }>();
   const envName = params.env;
+  const router = useRouter();
   const { currentApp, apps } = useApp();
   const appData = apps.find((a) => a.name === currentApp);
 
   const [status, setStatus] = useState<EnvironmentStatus | null>(null);
   const [manifest, setManifest] = useState<EnvironmentManifest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null);
 
   useEffect(() => {
     async function fetch_data() {
@@ -45,6 +49,25 @@ export default function EnvironmentDetailPage() {
     }
     if (currentApp) fetch_data();
   }, [envName, currentApp]);
+
+  const triggerAction = useCallback(async (action: 'start' | 'stop' | 'restart') => {
+    if (!currentApp) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/proxy/_y_/apps/${currentApp}/envs/${envName}/${action}`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.success && data.data?.opId) {
+        router.push(`/operations/${data.data.opId}`);
+      }
+    } catch {
+      // silent
+    } finally {
+      setActionLoading(false);
+      setConfirmAction(null);
+    }
+  }, [currentApp, envName, router]);
 
   const badgeClass = ENV_BADGE[envName] || 'bg-zinc-500/20 text-zinc-400';
 
@@ -81,6 +104,34 @@ export default function EnvironmentDetailPage() {
               {appData.displayName || currentApp}
             </span>
           )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => triggerAction('start')}
+              disabled={actionLoading}
+              className="flex items-center gap-1.5 rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+            >
+              <Play className="h-3 w-3" />
+              Start
+            </button>
+            <button
+              onClick={() => setConfirmAction('stop')}
+              disabled={actionLoading}
+              className="flex items-center gap-1.5 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+            >
+              <Square className="h-3 w-3" />
+              Stop
+            </button>
+            <button
+              onClick={() => setConfirmAction('restart')}
+              disabled={actionLoading}
+              className="flex items-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Restart
+            </button>
+          </div>
         </div>
         {status && (
           <p className="text-sm text-muted-foreground mt-1">
@@ -155,6 +206,28 @@ export default function EnvironmentDetailPage() {
           VM status error: {status.vmsError}
         </div>
       )}
+
+      {/* Confirmation Dialogs */}
+      <ConfirmationDialog
+        open={confirmAction === 'stop'}
+        title={`Stop ${envName.toUpperCase()}`}
+        description={`This will stop all services in the ${envName} environment (App Server, MySQL, MinIO, Nginx). The VMs will remain running.`}
+        severity="warning"
+        confirmText="Stop Environment"
+        onConfirm={() => triggerAction('stop')}
+        onCancel={() => setConfirmAction(null)}
+        loading={actionLoading}
+      />
+      <ConfirmationDialog
+        open={confirmAction === 'restart'}
+        title={`Restart ${envName.toUpperCase()}`}
+        description={`This will stop then start all services in the ${envName} environment in dependency order. Expect brief downtime.`}
+        severity="warning"
+        confirmText="Restart Environment"
+        onConfirm={() => triggerAction('restart')}
+        onCancel={() => setConfirmAction(null)}
+        loading={actionLoading}
+      />
     </div>
   );
 }
