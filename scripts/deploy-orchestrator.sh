@@ -57,8 +57,10 @@ npm ci 2>&1
 echo "Building UI..."
 npm run build 2>&1
 
-# Next.js standalone output does not include static assets — copy them in
+# Next.js standalone output does not include static assets — copy them in.
+# Remove old static dir first to avoid nested copies on subsequent deploys.
 echo "Copying static assets into standalone output..."
+rm -rf .next/standalone/.next/static .next/standalone/public
 cp -r .next/static .next/standalone/.next/static
 if [ -d public ]; then
   cp -r public .next/standalone/public
