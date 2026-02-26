@@ -12,13 +12,13 @@ const commitCache = new Map();
 async function getToken() {
   if (cachedToken) return cachedToken;
 
-  const secrets = await vault.readSecret('secret/data/pw/github');
-  if (!secrets || !secrets.token) {
-    logger.warn(CONTEXT, 'GitHub token not found in Vault at secret/data/pw/github');
+  const secrets = await vault.readSecret('secret/data/pw/infra');
+  if (!secrets || !secrets.github_token) {
+    logger.warn(CONTEXT, 'GitHub token not found in Vault at secret/data/pw/infra (key: github_token)');
     return null;
   }
 
-  cachedToken = secrets.token;
+  cachedToken = secrets.github_token;
   return cachedToken;
 }
 
