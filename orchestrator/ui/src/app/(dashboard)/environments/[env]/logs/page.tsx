@@ -15,11 +15,14 @@ interface ServiceInfo {
 }
 
 const SERVICE_LABELS: Record<string, string> = {
-  'app-server': 'App Server',
-  'app-client': 'App Client',
+  'app-server': 'App Server (systemd)',
+  'imp-server-out': 'IMP Server Log',
+  'imp-server-err': 'IMP Server Errors',
+  'app-client': 'App Client (systemd)',
   'nginx-access': 'Nginx Access',
   'nginx-error': 'Nginx Error',
-  'mysql': 'MySQL',
+  'mysql': 'MySQL Error',
+  'mysql-slow': 'MySQL Slow Query',
   'minio': 'MinIO',
 };
 

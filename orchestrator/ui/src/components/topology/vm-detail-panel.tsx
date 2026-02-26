@@ -26,18 +26,21 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 // Map VM roles to the log services available on that host
 const ROLE_SERVICES: Record<string, string[]> = {
-  server: ['app-server'],
+  server: ['imp-server-out', 'imp-server-err', 'app-server'],
   client: ['app-client', 'nginx-access', 'nginx-error'],
-  database: ['mysql'],
+  database: ['mysql', 'mysql-slow'],
   storage: ['minio'],
 };
 
 const SERVICE_LABELS: Record<string, string> = {
-  'app-server': 'App Server',
-  'app-client': 'App Client',
+  'app-server': 'App Server (systemd)',
+  'imp-server-out': 'IMP Server Log',
+  'imp-server-err': 'IMP Server Errors',
+  'app-client': 'App Client (systemd)',
   'nginx-access': 'Nginx Access',
   'nginx-error': 'Nginx Error',
-  'mysql': 'MySQL',
+  'mysql': 'MySQL Error',
+  'mysql-slow': 'MySQL Slow Query',
   'minio': 'MinIO',
 };
 

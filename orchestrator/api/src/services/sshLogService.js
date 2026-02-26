@@ -9,10 +9,13 @@ const SSH_USER = config.infra.deployUser || 'deploy';
 // Map service names to log commands on the remote host
 const SERVICE_LOG_COMMANDS = {
   'app-server': 'sudo journalctl -u imp-server -n {lines} --no-pager -o short-iso',
+  'imp-server-out': 'tail -n {lines} /home/deploy/.pm2/logs/imp-server-out.log',
+  'imp-server-err': 'tail -n {lines} /home/deploy/.pm2/logs/imp-server-error.log',
   'app-client': 'sudo journalctl -u imp-client -n {lines} --no-pager -o short-iso',
   'nginx-access': 'sudo tail -n {lines} /var/log/nginx/access.log',
   'nginx-error': 'sudo tail -n {lines} /var/log/nginx/error.log',
   'mysql': 'sudo tail -n {lines} /var/log/mysql/error.log',
+  'mysql-slow': 'sudo tail -n {lines} /var/log/mysql/slow.log',
   'minio': 'sudo journalctl -u minio -n {lines} --no-pager -o short-iso',
 };
 
@@ -21,20 +24,26 @@ const SERVICE_LOG_COMMANDS = {
 // by dumping the snapshot first (exits → flushes), then exec into follow mode.
 const SERVICE_STREAM_COMMANDS = {
   'app-server': 'sudo journalctl -u imp-server -n 50 --no-pager -o short-iso; exec sudo journalctl -u imp-server -f -n 0 -o short-iso',
+  'imp-server-out': 'tail -f -n 50 /home/deploy/.pm2/logs/imp-server-out.log',
+  'imp-server-err': 'tail -f -n 50 /home/deploy/.pm2/logs/imp-server-error.log',
   'app-client': 'sudo journalctl -u imp-client -n 50 --no-pager -o short-iso; exec sudo journalctl -u imp-client -f -n 0 -o short-iso',
   'nginx-access': 'sudo tail -f -n 50 /var/log/nginx/access.log',
   'nginx-error': 'sudo tail -f -n 50 /var/log/nginx/error.log',
   'mysql': 'sudo tail -f -n 50 /var/log/mysql/error.log',
+  'mysql-slow': 'sudo tail -f -n 50 /var/log/mysql/slow.log',
   'minio': 'sudo journalctl -u minio -n 50 --no-pager -o short-iso; exec sudo journalctl -u minio -f -n 0 -o short-iso',
 };
 
 // Map service names to the VM role that runs them
 const SERVICE_TO_ROLE = {
   'app-server': 'server',
+  'imp-server-out': 'server',
+  'imp-server-err': 'server',
   'app-client': 'client',
   'nginx-access': 'client',
   'nginx-error': 'client',
   'mysql': 'database',
+  'mysql-slow': 'database',
   'minio': 'storage',
 };
 
