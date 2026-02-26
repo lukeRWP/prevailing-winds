@@ -582,7 +582,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_c
 # Egress — Orchestrator: Vault API
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "egress_orchestrator" {
-  name    = "pw-egress-orchestrator"
+  name    = "pw-egress-orch"
   comment = "Orchestrator-specific egress (Vault API, Proxmox API)"
 
   rule {
