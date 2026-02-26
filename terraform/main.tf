@@ -20,7 +20,6 @@ module "app_vms" {
   vm_ips                  = var.vm_ips
   vm_external_ips         = var.vm_external_ips
   enable_external_network = var.environment == "prod"
-  ha_group                = var.ha_group
 }
 
 # ---------------------------------------------------------------------------
@@ -47,7 +46,7 @@ module "vault" {
   cpu_type                 = "host"
   cloud_init_snippet_id    = local.cloud_init_snippet_id
   internal_ip              = var.vault_ip
-  ha_group                 = "pw-shared"
+
   firewall_security_groups = [
     local.sg_names.ssh,
     local.sg_names.icmp,
@@ -78,7 +77,7 @@ module "runner" {
   cloud_init_snippet_id    = local.cloud_init_snippet_id
   internal_ip              = var.runner_ip
   additional_vlan_ips      = var.runner_env_ips
-  ha_group                 = "pw-shared"
+
   firewall_security_groups = [
     local.sg_names.ssh,
     local.sg_names.icmp,
@@ -109,7 +108,7 @@ module "orchestrator" {
   cloud_init_snippet_id    = local.cloud_init_snippet_id
   internal_ip              = var.orchestrator_ip
   additional_vlan_ips      = var.orchestrator_env_ips
-  ha_group                 = "pw-shared"
+
   firewall_security_groups = [
     local.sg_names.ssh,
     local.sg_names.icmp,

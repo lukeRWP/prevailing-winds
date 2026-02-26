@@ -12,7 +12,6 @@ environment  = "dev"
 target_node  = "prx002"
 env_vlan_tag = 100
 env_cidr     = "10.0.100.0/24"
-ha_group     = "imp-dev"
 
 vm_ips = {
   client = "10.0.100.10"
@@ -33,15 +32,12 @@ vm_ips = {
 # environment            = "shared"
 # env_vlan_tag           = 87
 # env_cidr               = "10.0.5.0/24"
-# ha_group               = "pw-shared"  # shared VMs override this per-module
 
 # --- Prod workspace only (prod.tfvars) ---
-# ha_group     = "imp-prod"
 # prod_db_node = "prx001"   # Anti-affinity: DB on different node than server
 # vm_external_ips = {
 #   client = "10.0.3.30"
 # }
 
 # --- QA workspace only (qa.tfvars) ---
-# ha_group     = "imp-qa"
 # target_node  = "prx001"   # QA preferred on prx001

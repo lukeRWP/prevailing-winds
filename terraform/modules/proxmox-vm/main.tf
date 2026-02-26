@@ -76,12 +76,6 @@ variable "external_firewall_security_groups" {
   default     = []
 }
 
-variable "ha_group" {
-  description = "HA group to enroll this VM in"
-  type        = string
-  default     = "RWP-DC-PAIR"
-}
-
 # ---------------------------------------------------------------
 # VM Resource Tuning
 # ---------------------------------------------------------------
@@ -302,11 +296,13 @@ resource "proxmox_virtual_environment_firewall_ipset" "ipfilter_additional" {
 }
 
 # ---------------------------------------------------------------
-# HA — Enroll in HA group
+# HA — Enroll in HA
+# PVE 9 replaced groups with node-affinity rules; group field is
+# no longer supported. We only set resource_id + state here.
+# Node affinity is managed via PVE 9 HA rules (Proxmox API).
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_haresource" "vm" {
   resource_id = "vm:${proxmox_virtual_environment_vm.vm.vm_id}"
-  group       = var.ha_group
   state       = "started"
 }
 

@@ -57,12 +57,6 @@ variable "enable_external_network" {
   default     = false
 }
 
-variable "ha_group" {
-  description = "HA group to enroll environment VMs in"
-  type        = string
-  default     = "RWP-DC-PAIR"
-}
-
 locals {
   # Only create app VMs for actual environments (not shared)
   create_vms = var.environment != "shared"
@@ -155,7 +149,6 @@ module "vms" {
   external_firewall_security_groups = local.role_external_security_groups[each.key]
   internal_ip                       = try(var.vm_ips[each.key], "")
   external_ip                       = contains(local.external_roles, each.key) ? try(var.vm_external_ips[each.key], "") : ""
-  ha_group                          = var.ha_group
 }
 
 output "vm_ids" {
