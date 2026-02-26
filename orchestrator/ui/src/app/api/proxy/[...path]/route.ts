@@ -62,13 +62,26 @@ async function proxyRequest(
     });
   }
 
-  // Regular API proxy
-  const body = request.method !== 'GET' && request.method !== 'HEAD'
-    ? await request.text().catch(() => null)
-    : null;
+  // Check if this is a binary upload (file restore)
+  const reqContentType = request.headers.get('content-type') || '';
+  const isUpload = reqContentType.includes('application/octet-stream');
 
-  if (body) {
-    headers['Content-Type'] = 'application/json';
+  let body: BodyInit | null = null;
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    if (isUpload) {
+      body = request.body;
+      headers['Content-Type'] = 'application/octet-stream';
+      const cl = request.headers.get('content-length');
+      if (cl) headers['Content-Length'] = cl;
+      const xfn = request.headers.get('x-filename');
+      if (xfn) headers['X-Filename'] = xfn;
+    } else {
+      const text = await request.text().catch(() => null);
+      if (text) {
+        body = text;
+        headers['Content-Type'] = 'application/json';
+      }
+    }
   }
 
   const upstream = await fetch(url.toString(), {
@@ -76,13 +89,30 @@ async function proxyRequest(
     headers,
     body,
     cache: 'no-store',
+    ...(isUpload ? { duplex: 'half' as const } : {}),
   });
 
+  const upstreamContentType = upstream.headers.get('Content-Type') || 'application/json';
+
+  // Binary download — stream through without buffering
+  if (upstreamContentType.startsWith('application/gzip') ||
+      upstreamContentType.startsWith('application/sql') ||
+      upstreamContentType.startsWith('application/octet-stream')) {
+    const respHeaders: Record<string, string> = { 'Content-Type': upstreamContentType };
+    const cd = upstream.headers.get('Content-Disposition');
+    if (cd) respHeaders['Content-Disposition'] = cd;
+    const cl = upstream.headers.get('Content-Length');
+    if (cl) respHeaders['Content-Length'] = cl;
+
+    return new NextResponse(upstream.body, { status: upstream.status, headers: respHeaders });
+  }
+
+  // Regular JSON proxy
   const data = await upstream.text();
 
   return new NextResponse(data, {
     status: upstream.status,
-    headers: { 'Content-Type': upstream.headers.get('Content-Type') || 'application/json' },
+    headers: { 'Content-Type': upstreamContentType },
   });
 }
 

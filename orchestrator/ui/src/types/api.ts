@@ -154,6 +154,16 @@ export interface DbConnectionInfo {
   databases: string[];
 }
 
+// Backup entry from GET /api/_x_/apps/:app/envs/:env/db/backups
+export interface BackupEntry {
+  name: string;
+  size: number;
+  sizeHuman: string;
+  modified: string;
+  type: 'scheduled' | 'pre-deploy' | 'pre-migrate' | 'pre-restore' | 'seed' | 'unknown';
+  compressed: boolean;
+}
+
 // Health status from GET /health/status
 export interface HealthStatus {
   status: string;

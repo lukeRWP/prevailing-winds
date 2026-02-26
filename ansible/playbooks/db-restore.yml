@@ -1,0 +1,79 @@
+---
+# Database restore playbook
+# Usage: ansible-playbook playbooks/db-restore.yml -i inventories/ENV/hosts.yml \
+#          -e restore_file=/path/to/backup.sql.gz
+#
+# Variables:
+#   restore_file       - Path to SQL file on the orchestrator (local)
+#   restore_filename   - Original filename (for logging)
+
+- name: "Restore {{ app_name | upper }} databases"
+  hosts: "{{ group_databases }}"
+  become: yes
+  vars:
+    restore_dir: "{{ mysql_backup_dir | default('/opt/' + app_name + '-db/backups') }}"
+  tasks:
+    - name: Validate restore file is provided
+      assert:
+        that: restore_file is defined and restore_file | length > 0
+        fail_msg: "Required: -e restore_file=/path/to/file.sql(.gz)"
+
+    - name: Ensure backup directory exists
+      file:
+        path: "{{ restore_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Pre-restore safety backup
+      command: >
+        mysqldump -u root -p{{ mysql_root_password }}
+        --all-databases --single-transaction --routines --triggers
+        --result-file={{ restore_dir }}/pre-restore-{{ ansible_date_time.iso8601_basic_short }}.sql
+      no_log: true
+
+    - name: Compress pre-restore backup
+      command: gzip {{ restore_dir }}/pre-restore-{{ ansible_date_time.iso8601_basic_short }}.sql
+
+    - name: Copy restore file from orchestrator to DB host
+      copy:
+        src: "{{ restore_file }}"
+        dest: "{{ restore_dir }}/{{ restore_filename | default(restore_file | basename) }}"
+        owner: root
+        group: root
+        mode: "0640"
+
+    - name: Determine restore filename
+      set_fact:
+        _restore_name: "{{ restore_filename | default(restore_file | basename) }}"
+
+    - name: Decompress .gz file if needed
+      command: gunzip -f {{ restore_dir }}/{{ _restore_name }}
+      when: _restore_name is match('.*\\.gz$')
+
+    - name: Set SQL file path
+      set_fact:
+        _sql_file: "{{ restore_dir }}/{{ _restore_name | regex_replace('\\.gz$', '') }}"
+
+    - name: Restore database from SQL file
+      shell: mysql -u root -p{{ mysql_root_password }} < {{ _sql_file }}
+      no_log: true
+
+    - name: Verify restore — check table counts
+      command: >
+        mysql -u root -p{{ mysql_root_password }}
+        -N -e "SELECT COUNT(*) FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA LIKE '{{ mysql_schema_prefix | default('IMP_') }}%'"
+      register: post_restore_count
+      changed_when: false
+      no_log: true
+
+    - name: Clean up SQL file
+      file:
+        path: "{{ _sql_file }}"
+        state: absent
+
+    - name: Report restore result
+      debug:
+        msg: "Database restored: {{ post_restore_count.stdout | trim }} tables found (from {{ _restore_name }})"

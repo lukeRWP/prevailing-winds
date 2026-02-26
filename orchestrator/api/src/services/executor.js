@@ -32,6 +32,7 @@ const TIMEOUT_MAP = {
   'db-setup': 10 * 60 * 1000,
   'db-migrate': 10 * 60 * 1000,
   'db-backup': 15 * 60 * 1000,
+  'db-restore': 30 * 60 * 1000,
 };
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_SSH_KEY_PATH = process.env.ANSIBLE_PRIVATE_KEY_FILE || path.join(config.orchestratorHome, '.ssh', 'deploy_key');
@@ -41,7 +42,7 @@ const INFRA_OPS = [
   'provision', 'deploy', 'deploy-server', 'deploy-client', 'rollback',
   'infra-plan', 'infra-apply', 'infra-destroy',
   'infra-plan-shared', 'infra-apply-shared',
-  'db-setup', 'db-migrate', 'db-backup', 'db-seed', 'seed',
+  'db-setup', 'db-migrate', 'db-backup', 'db-restore', 'db-seed', 'seed',
   'env-start', 'env-stop',
   'prepare-ssh',
 ];
@@ -52,7 +53,7 @@ const INLINE_OPS = ['prepare-ssh'];
 const TERRAFORM_OPS = ['infra-plan', 'infra-apply', 'infra-destroy', 'infra-plan-shared', 'infra-apply-shared'];
 const ANSIBLE_OPS = [
   'provision', 'deploy', 'deploy-server', 'deploy-client', 'rollback',
-  'db-setup', 'db-migrate', 'db-backup', 'db-seed', 'seed',
+  'db-setup', 'db-migrate', 'db-backup', 'db-restore', 'db-seed', 'seed',
   'env-start', 'env-stop',
 ];
 
@@ -246,6 +247,15 @@ async function executeOperation(op) {
       case 'db-backup':
         ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-backup'));
         break;
+      case 'db-restore': {
+        const restoreFile = parsedVars.restore_file_local;
+        if (restoreFile) {
+          tempFiles.push(restoreFile);
+          parsedVars.restore_file = restoreFile;
+        }
+        ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-restore'));
+        break;
+      }
       case 'db-seed':
         ({ cmd, args, cwd } = buildAnsibleCmd(infraDir, null, env, manifest, parsedVars, 'db-seed'));
         break;
@@ -381,6 +391,7 @@ function playbookForType(type) {
     'db-setup': 'playbooks/db-setup.yml',
     'db-migrate': 'playbooks/db-migrate.yml',
     'db-backup': 'playbooks/db-backup.yml',
+    'db-restore': 'playbooks/db-restore.yml',
     'db-seed': 'playbooks/env-seed.yml',
     'seed': 'playbooks/env-seed.yml',
     'env-start': 'playbooks/env-start.yml',

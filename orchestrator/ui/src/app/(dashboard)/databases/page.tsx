@@ -1,17 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Database, Copy, Check, Eye, EyeOff, RefreshCw, ArrowRightLeft,
-  HardDrive, ArchiveRestore, FileUp, Wrench, Table,
+  HardDrive, ArchiveRestore, FileUp, Wrench, Table, Download, Upload,
+  Archive, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/hooks/use-app';
 import { AppSection } from '@/components/layout/app-section';
 import { ConfirmationDialog } from '@/components/actions/confirmation-dialog';
 import type { AppSummary } from '@/lib/app-context';
-import type { DbConnectionInfo } from '@/types/api';
+import type { DbConnectionInfo, BackupEntry } from '@/types/api';
 
 export default function DatabasesPage() {
   const { apps } = useApp();
@@ -71,6 +72,21 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
   const [syncOpen, setSyncOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Backups state
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  // Upload + restore state
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore from existing backup
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState('');
+
   useEffect(() => {
     setLoading(true);
     setConnInfo(null);
@@ -81,6 +97,7 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
       })
       .catch(() => { /* silent */ })
       .finally(() => setLoading(false));
+    loadBackups();
   }, [appName, envName]);
 
   function copyToClipboard(text: string, label: string) {
@@ -123,6 +140,81 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
       setActionLoading(false);
       setSyncOpen(false);
     }
+  }
+
+  async function loadBackups() {
+    setBackupsLoading(true);
+    try {
+      const res = await fetch(`/api/proxy/_x_/apps/${appName}/envs/${envName}/db/backups`);
+      const data = await res.json();
+      if (data.success) setBackups(data.data.backups);
+    } catch { /* silent */ }
+    finally { setBackupsLoading(false); }
+  }
+
+  async function downloadBackup(filename: string) {
+    setDownloading(filename);
+    try {
+      const res = await fetch(`/api/proxy/_x_/apps/${appName}/envs/${envName}/db/backups/${filename}`);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ }
+    finally { setDownloading(null); }
+  }
+
+  async function handleRestoreFromBackup() {
+    if (!restoreTarget) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/proxy/_y_/apps/${appName}/envs/${envName}/db/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vars: { restore_filename: restoreTarget } }),
+      });
+      const data = await res.json();
+      if (data.success && data.data?.opId) {
+        router.push(`/operations/${data.data.opId}`);
+      }
+    } catch { /* silent */ }
+    finally { setActionLoading(false); setRestoreOpen(false); }
+  }
+
+  async function handleUploadRestore() {
+    if (!uploadFile) return;
+    setUploading(true);
+    try {
+      const res = await fetch(
+        `/api/proxy/_y_/apps/${appName}/envs/${envName}/db/restore/upload?filename=${encodeURIComponent(uploadFile.name)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: uploadFile,
+        }
+      );
+      const data = await res.json();
+      if (data.success && data.data?.opId) {
+        router.push(`/operations/${data.data.opId}`);
+      }
+    } catch { /* silent */ }
+    finally { setUploading(false); setUploadOpen(false); setUploadFile(null); }
+  }
+
+  function formatRelative(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
   }
 
   if (loading) {
@@ -217,7 +309,7 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Actions + Backups */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Quick Actions */}
         <div className="rounded-md border border-border bg-card/50 p-4">
@@ -230,12 +322,6 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
               icon={HardDrive}
               label="Backup"
               onClick={() => triggerAction('db/backup')}
-              disabled={actionLoading}
-            />
-            <ActionButton
-              icon={ArchiveRestore}
-              label="Restore"
-              onClick={() => triggerAction('db/restore')}
               disabled={actionLoading}
             />
             <ActionButton
@@ -286,6 +372,166 @@ function EnvDatabases({ appName, envName, allEnvs }: { appName: string; envName:
         </div>
       </div>
 
+      {/* Backups */}
+      <div className="rounded-md border border-border bg-card/50 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5">
+            <Archive className="h-3 w-3" />
+            Backups
+          </h4>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadBackups}
+              disabled={backupsLoading}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-3 w-3', backupsLoading && 'animate-spin')} />
+              Refresh
+            </button>
+            <button
+              onClick={() => { setUploadOpen(true); setUploadFile(null); }}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <Upload className="h-3 w-3" />
+              Upload &amp; Restore
+            </button>
+          </div>
+        </div>
+
+        {backupsLoading ? (
+          <p className="text-xs text-muted-foreground py-2">Loading backups...</p>
+        ) : backups.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-2">No backups found on {envName.toUpperCase()} database host</p>
+        ) : (
+          <div className="space-y-0.5 max-h-72 overflow-y-auto">
+            {backups.map((b) => (
+              <div
+                key={b.name}
+                className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-accent/30 group"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <Archive className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="text-[11px] font-mono text-foreground truncate">{b.name}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{b.sizeHuman}</span>
+                  <span className="text-[10px] text-muted-foreground/60 shrink-0">{formatRelative(b.modified)}</span>
+                  {b.type !== 'scheduled' && b.type !== 'unknown' && (
+                    <span className="text-[9px] rounded bg-accent/50 px-1.5 py-0.5 text-muted-foreground shrink-0">
+                      {b.type}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                  <button
+                    onClick={() => downloadBackup(b.name)}
+                    disabled={downloading === b.name}
+                    title="Download"
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    <Download className={cn('h-3.5 w-3.5', downloading === b.name && 'animate-pulse')} />
+                  </button>
+                  <button
+                    onClick={() => { setRestoreTarget(b.name); setRestoreOpen(true); }}
+                    title="Restore from this backup"
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Upload & Restore Dialog */}
+      {uploadOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                Upload &amp; Restore
+              </h3>
+              <button onClick={() => { setUploadOpen(false); setUploadFile(null); }} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Upload a <code>.sql</code> or <code>.sql.gz</code> backup file to restore into the <strong>{envName.toUpperCase()}</strong> database.
+              A safety backup will be created before restoring.
+            </p>
+
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".sql,.gz"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 rounded-md border border-dashed border-border bg-accent/20 px-4 py-6 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                {uploadFile ? (
+                  <>
+                    <Archive className="h-4 w-4" />
+                    <span className="font-mono">{uploadFile.name}</span>
+                    <span className="text-muted-foreground/60">({(uploadFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Click to select a backup file
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => { setUploadOpen(false); setUploadFile(null); }}
+                className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadRestore}
+                disabled={!uploadFile || uploading}
+                className="flex items-center gap-1.5 rounded-md bg-red-500/20 border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? (
+                  <>
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <ArchiveRestore className="h-3 w-3" />
+                    Upload &amp; Restore
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore from existing backup confirmation */}
+      <ConfirmationDialog
+        open={restoreOpen}
+        title={`Restore from backup`}
+        description={`This will restore ${restoreTarget} into ${envName.toUpperCase()}. A safety backup will be created first, but any current data will be overwritten.`}
+        severity="danger"
+        confirmText="Restore"
+        requireTyping={envName}
+        onConfirm={handleRestoreFromBackup}
+        onCancel={() => setRestoreOpen(false)}
+        loading={actionLoading}
+      />
+
+      {/* Sync confirmation */}
       <ConfirmationDialog
         open={syncOpen}
         title={`Sync ${syncSource.toUpperCase()} → ${envName.toUpperCase()}`}
