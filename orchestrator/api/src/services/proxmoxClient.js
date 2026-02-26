@@ -127,18 +127,18 @@ async function waitForStatus(node, vmid, targetStatus, maxWaitMs = 60000) {
  */
 async function findEnvironmentVMs(appName, envName, envConfig) {
   const hosts = envConfig.hosts || {};
-  const nodeSet = new Set();
   const expectedNames = new Map();
 
   for (const [role, hostCfg] of Object.entries(hosts)) {
     const roleKey = ROLE_KEY_MAP[role] || role;
     const vmName = `${appName}-${roleKey}-${envName}`;
-    expectedNames.set(vmName, { role, roleKey, node: hostCfg.proxmoxNode });
-    if (hostCfg.proxmoxNode) nodeSet.add(hostCfg.proxmoxNode);
+    expectedNames.set(vmName, { role, roleKey });
   }
 
+  // Query all cluster nodes — VMs may have been migrated by HA rules
+  const clusterNodes = await listNodes();
   const found = [];
-  for (const node of nodeSet) {
+  for (const { node } of clusterNodes) {
     const vms = await listVMs(node);
     for (const vm of vms) {
       const match = expectedNames.get(vm.name);
