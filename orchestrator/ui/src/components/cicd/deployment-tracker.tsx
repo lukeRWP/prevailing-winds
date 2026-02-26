@@ -2,7 +2,7 @@
 
 import { useState, Fragment } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight, ExternalLink, Clock, User, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, Clock, User, AlertTriangle, GitCommit, GitBranch, Tag, Rocket, Server, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Operation } from '@/types/api';
 
@@ -13,6 +13,8 @@ interface DeploymentTrackerProps {
 interface DeploymentRow {
   ref: string;
   envs: Record<string, Operation>;
+  type: string;         // most common op type in this row
+  initiated_by: string; // from the most recent op
 }
 
 export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
@@ -27,13 +29,16 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
   deployOps.forEach((op) => {
     const ref = op.ref || 'unknown';
     if (!rowMap.has(ref)) {
-      rowMap.set(ref, { ref, envs: {} });
+      rowMap.set(ref, { ref, envs: {}, type: op.type, initiated_by: op.initiated_by || '' });
     }
     const row = rowMap.get(ref)!;
     const env = op.env || 'unknown';
     // Keep the most recent deploy per ref+env
     if (!row.envs[env] || new Date(op.created_at) > new Date(row.envs[env].created_at)) {
       row.envs[env] = op;
+      // Update row-level metadata from the most recent operation
+      row.type = op.type;
+      row.initiated_by = op.initiated_by || row.initiated_by;
     }
   });
 
@@ -55,7 +60,7 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
           <thead>
             <tr className="border-b border-border bg-accent/30">
               <th className="px-4 py-2 text-left text-[10px] font-medium text-muted-foreground uppercase">
-                Ref
+                Deployment
               </th>
               {envNames.map((env) => (
                 <th key={env} className="px-4 py-2 text-center text-[10px] font-medium text-muted-foreground uppercase">
@@ -73,13 +78,23 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
                     className="hover:bg-accent/20 transition-colors cursor-pointer"
                     onClick={() => setExpandedRef(isExpanded ? null : row.ref)}
                   >
-                    <td className="px-4 py-2 text-xs font-mono text-foreground">
-                      <div className="flex items-center gap-1.5">
+                    <td className="px-4 py-2 text-xs text-foreground">
+                      <div className="flex items-center gap-2">
                         {isExpanded
                           ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
                           : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                         }
-                        <span>{row.ref.length > 12 ? row.ref.slice(0, 12) + '...' : row.ref}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <TypeBadge type={row.type} />
+                            <RefLabel ref_={row.ref} />
+                          </div>
+                          {row.initiated_by && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                              by {row.initiated_by}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     {envNames.map((env) => {
@@ -177,6 +192,50 @@ function ExpandedDetail({
         })}
       </div>
     </div>
+  );
+}
+
+function TypeBadge({ type }: { type: string }) {
+  const config: Record<string, { label: string; icon: typeof Rocket; className: string }> = {
+    'deploy': { label: 'Full Deploy', icon: Rocket, className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+    'deploy-server': { label: 'Server', icon: Server, className: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+    'deploy-client': { label: 'Client', icon: Monitor, className: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+  };
+  const c = config[type] || config['deploy'];
+  const Icon = c.icon;
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium shrink-0', c.className)}>
+      <Icon className="h-2.5 w-2.5" />
+      {c.label}
+    </span>
+  );
+}
+
+function RefLabel({ ref_ }: { ref_: string }) {
+  const isSha = /^[0-9a-f]{7,40}$/.test(ref_);
+  const isTag = /^v?\d+\.\d+/.test(ref_);
+
+  if (isSha) {
+    return (
+      <span className="inline-flex items-center gap-1 font-mono text-muted-foreground">
+        <GitCommit className="h-3 w-3 shrink-0" />
+        {ref_.slice(0, 8)}
+      </span>
+    );
+  }
+  if (isTag) {
+    return (
+      <span className="inline-flex items-center gap-1 text-amber-400">
+        <Tag className="h-3 w-3 shrink-0" />
+        {ref_}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-foreground">
+      <GitBranch className="h-3 w-3 shrink-0" />
+      {ref_}
+    </span>
   );
 }
 
