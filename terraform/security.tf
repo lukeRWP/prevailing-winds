@@ -30,6 +30,7 @@ locals {
     egress_app    = "${var.app_name}-egress-app"
     egress_client       = "${var.app_name}-egress-client"
     egress_orchestrator = "pw-egress-orchestrator"
+    egress_runner       = "pw-egress-runner"
     # Per-environment groups
     app_env = {
       mgmt = "${var.app_name}-app-mgmt"

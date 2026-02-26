@@ -81,6 +81,7 @@ module "runner" {
     local.sg_names.icmp,
     local.sg_names.monitoring,
     local.sg_names.egress_base,
+    local.sg_names.egress_runner,
   ]
 }
 
