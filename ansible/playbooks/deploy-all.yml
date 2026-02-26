@@ -185,6 +185,41 @@
       command: mysql --defaults-file=/root/.my.cnf -e "SELECT 1"
       changed_when: false
 
+- name: Ensure MinIO is running
+  hosts: "{{ group_storage }}"
+  become: yes
+  gather_facts: no
+  vars_files:
+    - ../roles/minio/defaults/main.yml
+  tasks:
+    - name: Check MinIO service status
+      command: systemctl is-active minio
+      register: minio_status
+      changed_when: false
+      failed_when: false
+
+    - name: Start MinIO if not active
+      service:
+        name: minio
+        state: started
+      when: minio_status.stdout != 'active'
+
+    - name: Wait for MinIO port
+      wait_for:
+        port: "{{ minio_port }}"
+        state: started
+        timeout: 30
+
+    - name: Verify MinIO health
+      uri:
+        url: "https://localhost:{{ minio_port }}/minio/health/live"
+        status_code: 200
+        validate_certs: no
+      register: minio_health
+      retries: 5
+      delay: 3
+      until: minio_health.status == 200
+
 - name: Run pending database migrations
   hosts: "{{ group_databases }}"
   become: yes
