@@ -59,6 +59,25 @@ router.get('/api/_x_/apps/:app/git/commits', async (req, res) => {
   }
 });
 
+// Fetch recent releases and merged PRs from GitHub
+router.get('/api/_x_/apps/:app/git/activity', async (req, res) => {
+  try {
+    const app = appRegistry.get(req.params.app);
+    if (!app) return error(res, `App '${req.params.app}' not found`, 404);
+
+    const repoSlug = githubClient.parseRepoSlug(app.repo);
+    if (!repoSlug) return error(res, 'No GitHub repo configured for this app', 400);
+
+    const [releases, pulls] = await Promise.all([
+      githubClient.getRecentReleases(repoSlug),
+      githubClient.getRecentPRs(repoSlug),
+    ]);
+    return success(res, { releases, pulls }, 'Git activity retrieved');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
 // Verify infra secrets exist in Vault
 router.get('/api/_x_/infra/secrets/verify', async (req, res) => {
   try {

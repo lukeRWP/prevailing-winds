@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { PipelineFlow, type PipelineStep } from '@/components/cicd/pipeline-flow';
 import { DeploymentTracker } from '@/components/cicd/deployment-tracker';
+import { GitActivity } from '@/components/cicd/git-activity';
 import { useApp } from '@/hooks/use-app';
 import { AppSection } from '@/components/layout/app-section';
 import type { AppSummary } from '@/lib/app-context';
@@ -78,6 +79,12 @@ function AppCicd({ app, refreshKey }: { app: AppSummary; refreshKey: number }) {
             {new Date(lastDeploy.created_at).toLocaleString()}
           </p>
         )}
+      </div>
+
+      {/* Git Activity — Releases & PRs */}
+      <div>
+        <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase">Git Activity</h3>
+        <GitActivity appName={app.name} />
       </div>
 
       {/* Deployment Matrix */}

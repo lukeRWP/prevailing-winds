@@ -122,6 +122,26 @@ export interface CommitInfo {
   } | null;
 }
 
+// Git activity from GET /api/_x_/apps/:app/git/activity
+export interface GitRelease {
+  tag: string;
+  name: string;
+  date: string;
+  url: string;
+  author: string;
+  prerelease: boolean;
+}
+
+export interface GitPR {
+  number: number;
+  title: string;
+  url: string;
+  branch: string;
+  baseBranch: string;
+  mergedAt: string;
+  author: string;
+}
+
 // Health status from GET /health/status
 export interface HealthStatus {
   status: string;

@@ -2,11 +2,13 @@
 
 import { useState, useEffect, Fragment } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ChevronDown, ChevronRight, ExternalLink, Clock, User, AlertTriangle,
-  GitCommit, GitBranch, Tag, Rocket, Server, Monitor, GitPullRequest,
+  GitCommit, GitBranch, Tag, Rocket, Server, Monitor, GitPullRequest, RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ConfirmationDialog } from '@/components/actions/confirmation-dialog';
 import type { Operation, CommitInfo } from '@/types/api';
 
 interface DeploymentTrackerProps {
@@ -156,7 +158,7 @@ export function DeploymentTracker({ operations, appName }: DeploymentTrackerProp
                   {isExpanded && (
                     <tr>
                       <td colSpan={envNames.length + 1} className="px-0 py-0">
-                        <ExpandedDetail envNames={envNames} envs={row.envs} commitInfo={commitInfo} />
+                        <ExpandedDetail envNames={envNames} envs={row.envs} commitInfo={commitInfo} appName={appName} ref_={row.ref} />
                       </td>
                     </tr>
                   )}
@@ -174,13 +176,39 @@ function ExpandedDetail({
   envNames,
   envs,
   commitInfo,
+  appName,
+  ref_,
 }: {
   envNames: string[];
   envs: Record<string, Operation>;
   commitInfo?: CommitInfo;
+  appName: string;
+  ref_: string;
 }) {
+  const router = useRouter();
+  const [rollbackTarget, setRollbackTarget] = useState<string | null>(null);
+  const [rollbackLoading, setRollbackLoading] = useState(false);
+
   const activeEnvs = envNames.filter((e) => envs[e]);
   if (activeEnvs.length === 0) return null;
+
+  async function handleRollback(env: string) {
+    setRollbackLoading(true);
+    try {
+      const res = await fetch(`/api/proxy/_y_/apps/${appName}/envs/${env}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: ref_ }),
+      });
+      const data = await res.json();
+      if (data.success && data.data?.opId) {
+        router.push(`/operations/${data.data.opId}`);
+      }
+    } catch { /* silent */ } finally {
+      setRollbackLoading(false);
+      setRollbackTarget(null);
+    }
+  }
 
   return (
     <div className="border-t border-border bg-accent/10 px-4 py-3">
@@ -224,6 +252,7 @@ function ExpandedDetail({
       >
         {activeEnvs.map((env) => {
           const op = envs[env];
+          const canRollback = op.status === 'success' || op.status === 'failed';
           return (
             <div key={env} className="space-y-1.5">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -255,18 +284,40 @@ function ExpandedDetail({
                 </div>
               )}
 
-              <Link
-                href={`/operations/${op.id}`}
-                className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ExternalLink className="h-3 w-3" />
-                View logs
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/operations/${op.id}`}
+                  className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  View logs
+                </Link>
+                {canRollback && (
+                  <button
+                    className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                    onClick={(e) => { e.stopPropagation(); setRollbackTarget(env); }}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Rollback
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
       </div>
+
+      <ConfirmationDialog
+        open={rollbackTarget !== null}
+        title={`Rollback ${rollbackTarget?.toUpperCase()}`}
+        description={`This will rollback the ${rollbackTarget?.toUpperCase()} environment to the previous release. The current deployment (${ref_.slice(0, 8)}) will be replaced.`}
+        severity="warning"
+        confirmText="Rollback"
+        onConfirm={() => rollbackTarget && handleRollback(rollbackTarget)}
+        onCancel={() => setRollbackTarget(null)}
+        loading={rollbackLoading}
+      />
     </div>
   );
 }
