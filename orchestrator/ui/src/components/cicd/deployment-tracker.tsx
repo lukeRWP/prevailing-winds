@@ -1,24 +1,29 @@
 'use client';
 
-import { useState, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight, ExternalLink, Clock, User, AlertTriangle, GitCommit, GitBranch, Tag, Rocket, Server, Monitor } from 'lucide-react';
+import {
+  ChevronDown, ChevronRight, ExternalLink, Clock, User, AlertTriangle,
+  GitCommit, GitBranch, Tag, Rocket, Server, Monitor, GitPullRequest,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Operation } from '@/types/api';
+import type { Operation, CommitInfo } from '@/types/api';
 
 interface DeploymentTrackerProps {
   operations: Operation[];
+  appName: string;
 }
 
 interface DeploymentRow {
   ref: string;
   envs: Record<string, Operation>;
-  type: string;         // most common op type in this row
-  initiated_by: string; // from the most recent op
+  type: string;
+  initiated_by: string;
 }
 
-export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
+export function DeploymentTracker({ operations, appName }: DeploymentTrackerProps) {
   const [expandedRef, setExpandedRef] = useState<string | null>(null);
+  const [commitInfoMap, setCommitInfoMap] = useState<Record<string, CommitInfo>>({});
 
   // Group deploy operations by ref, then by env
   const deployOps = operations.filter(
@@ -33,10 +38,8 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
     }
     const row = rowMap.get(ref)!;
     const env = op.env || 'unknown';
-    // Keep the most recent deploy per ref+env
     if (!row.envs[env] || new Date(op.created_at) > new Date(row.envs[env].created_at)) {
       row.envs[env] = op;
-      // Update row-level metadata from the most recent operation
       row.type = op.type;
       row.initiated_by = op.initiated_by || row.initiated_by;
     }
@@ -44,6 +47,27 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
 
   const rows = Array.from(rowMap.values()).slice(0, 10);
   const envNames = ['dev', 'qa', 'prod'];
+
+  // Collect unique SHA refs to fetch commit info for
+  const shaRefs = rows
+    .map((r) => r.ref)
+    .filter((ref) => /^[0-9a-f]{7,40}$/.test(ref));
+
+  useEffect(() => {
+    if (shaRefs.length === 0 || !appName) return;
+    const shasToFetch = shaRefs.filter((sha) => !commitInfoMap[sha]);
+    if (shasToFetch.length === 0) return;
+
+    fetch(`/api/proxy/_x_/apps/${appName}/git/commits?shas=${shasToFetch.join(',')}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          setCommitInfoMap((prev) => ({ ...prev, ...data.data }));
+        }
+      })
+      .catch(() => { /* silent */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shaRefs.join(','), appName]);
 
   if (rows.length === 0) {
     return (
@@ -72,6 +96,7 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
           <tbody className="divide-y divide-border">
             {rows.map((row) => {
               const isExpanded = expandedRef === row.ref;
+              const commitInfo = commitInfoMap[row.ref];
               return (
                 <Fragment key={row.ref}>
                   <tr
@@ -85,11 +110,26 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
                           : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                         }
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <TypeBadge type={row.type} />
-                            <RefLabel ref_={row.ref} />
+                            <RefLabel ref_={row.ref} commitInfo={commitInfo} />
                           </div>
-                          {row.initiated_by && (
+                          {commitInfo?.message && (
+                            <p className="text-[11px] text-foreground mt-0.5 truncate max-w-[400px]">
+                              {commitInfo.message}
+                            </p>
+                          )}
+                          {commitInfo?.pr && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 truncate flex items-center gap-1">
+                              <GitPullRequest className="h-2.5 w-2.5 text-violet-400 shrink-0" />
+                              <span className="text-violet-400">#{commitInfo.pr.number}</span>
+                              {' '}
+                              <span className="text-muted-foreground">{commitInfo.pr.branch}</span>
+                              {' → '}
+                              <span className="text-muted-foreground">{commitInfo.pr.baseBranch}</span>
+                            </p>
+                          )}
+                          {!commitInfo?.message && row.initiated_by && (
                             <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
                               by {row.initiated_by}
                             </p>
@@ -116,7 +156,7 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
                   {isExpanded && (
                     <tr>
                       <td colSpan={envNames.length + 1} className="px-0 py-0">
-                        <ExpandedDetail envNames={envNames} envs={row.envs} />
+                        <ExpandedDetail envNames={envNames} envs={row.envs} commitInfo={commitInfo} />
                       </td>
                     </tr>
                   )}
@@ -133,15 +173,51 @@ export function DeploymentTracker({ operations }: DeploymentTrackerProps) {
 function ExpandedDetail({
   envNames,
   envs,
+  commitInfo,
 }: {
   envNames: string[];
   envs: Record<string, Operation>;
+  commitInfo?: CommitInfo;
 }) {
   const activeEnvs = envNames.filter((e) => envs[e]);
   if (activeEnvs.length === 0) return null;
 
   return (
     <div className="border-t border-border bg-accent/10 px-4 py-3">
+      {/* Commit & PR links */}
+      {commitInfo && (
+        <div className="flex items-center gap-3 mb-3 pb-2 border-b border-border/50">
+          <a
+            href={commitInfo.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GitCommit className="h-3 w-3" />
+            View commit on GitHub
+          </a>
+          {commitInfo.pr && (
+            <a
+              href={commitInfo.pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GitPullRequest className="h-3 w-3" />
+              PR #{commitInfo.pr.number}: {commitInfo.pr.title}
+            </a>
+          )}
+          {commitInfo.author && (
+            <span className="text-[10px] text-muted-foreground">
+              by {commitInfo.author}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Per-env details */}
       <div
         className="grid gap-3"
         style={{ gridTemplateColumns: `repeat(${activeEnvs.length}, 1fr)` }}
@@ -211,17 +287,26 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-function RefLabel({ ref_ }: { ref_: string }) {
+function RefLabel({ ref_, commitInfo }: { ref_: string; commitInfo?: CommitInfo }) {
   const isSha = /^[0-9a-f]{7,40}$/.test(ref_);
   const isTag = /^v?\d+\.\d+/.test(ref_);
 
   if (isSha) {
-    return (
+    const linkUrl = commitInfo?.url;
+    const inner = (
       <span className="inline-flex items-center gap-1 font-mono text-muted-foreground">
         <GitCommit className="h-3 w-3 shrink-0" />
         {ref_.slice(0, 8)}
       </span>
     );
+    if (linkUrl) {
+      return (
+        <a href={linkUrl} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" onClick={(e) => e.stopPropagation()}>
+          {inner}
+        </a>
+      );
+    }
+    return inner;
   }
   if (isTag) {
     return (

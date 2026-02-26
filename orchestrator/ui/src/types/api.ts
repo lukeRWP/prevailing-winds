@@ -106,6 +106,22 @@ export interface Operation {
   initiated_by?: string;
 }
 
+// Commit info from GET /api/_x_/apps/:app/git/commits
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  url: string;
+  pr?: {
+    number: number;
+    title: string;
+    url: string;
+    branch: string;
+    baseBranch: string;
+  } | null;
+}
+
 // Health status from GET /health/status
 export interface HealthStatus {
   status: string;

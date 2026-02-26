@@ -83,7 +83,7 @@ function AppCicd({ app, refreshKey }: { app: AppSummary; refreshKey: number }) {
       {/* Deployment Matrix */}
       <div>
         <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase">Deployment History</h3>
-        <DeploymentTracker operations={operations} />
+        <DeploymentTracker operations={operations} appName={app.name} />
       </div>
 
       {/* Recent Operations */}

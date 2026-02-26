@@ -1,0 +1,143 @@
+const https = require('https');
+const logger = require('../utils/logger');
+const vault = require('./vault');
+
+const CONTEXT = 'github';
+
+let cachedToken = null;
+
+// In-memory cache: sha -> commit info (persists for process lifetime)
+const commitCache = new Map();
+
+async function getToken() {
+  if (cachedToken) return cachedToken;
+
+  const secrets = await vault.readSecret('secret/data/pw/github');
+  if (!secrets || !secrets.token) {
+    logger.warn(CONTEXT, 'GitHub token not found in Vault at secret/data/pw/github');
+    return null;
+  }
+
+  cachedToken = secrets.token;
+  return cachedToken;
+}
+
+/**
+ * Parse a git SSH or HTTPS URL into owner/repo.
+ * e.g. "git@github.com:lukeRWP/Expansions-Management.git" -> "lukeRWP/Expansions-Management"
+ */
+function parseRepoSlug(repoUrl) {
+  if (!repoUrl) return null;
+  // SSH format: git@github.com:owner/repo.git
+  const sshMatch = repoUrl.match(/github\.com[:/]([^/]+\/[^/.]+)/);
+  if (sshMatch) return sshMatch[1];
+  // HTTPS format: https://github.com/owner/repo.git
+  const httpsMatch = repoUrl.match(/github\.com\/([^/]+\/[^/.]+)/);
+  if (httpsMatch) return httpsMatch[1];
+  return null;
+}
+
+async function githubApi(method, apiPath) {
+  const token = await getToken();
+  if (!token) return null;
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: apiPath,
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'pw-orchestrator',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch {
+            resolve(null);
+          }
+        } else {
+          logger.warn(CONTEXT, `GitHub API ${res.statusCode}: ${apiPath}`);
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      logger.error(CONTEXT, `GitHub API error: ${err.message}`);
+      resolve(null);
+    });
+    req.end();
+  });
+}
+
+/**
+ * Get commit details for a SHA.
+ * Returns { sha, message, author, date, url, pr } or null.
+ */
+async function getCommitInfo(repoSlug, sha) {
+  if (!repoSlug || !sha) return null;
+
+  // Check cache
+  const cacheKey = `${repoSlug}:${sha}`;
+  if (commitCache.has(cacheKey)) return commitCache.get(cacheKey);
+
+  const commit = await githubApi('GET', `/repos/${repoSlug}/commits/${sha}`);
+  if (!commit) return null;
+
+  const info = {
+    sha: commit.sha,
+    message: commit.commit?.message?.split('\n')[0] || '',
+    author: commit.commit?.author?.name || commit.author?.login || '',
+    date: commit.commit?.author?.date || '',
+    url: commit.html_url || `https://github.com/${repoSlug}/commit/${sha}`,
+    pr: null,
+  };
+
+  // Try to get associated PR
+  const pulls = await githubApi('GET', `/repos/${repoSlug}/commits/${sha}/pulls`);
+  if (pulls && pulls.length > 0) {
+    const pr = pulls[0];
+    info.pr = {
+      number: pr.number,
+      title: pr.title,
+      url: pr.html_url,
+      branch: pr.head?.ref || '',
+      baseBranch: pr.base?.ref || '',
+    };
+  }
+
+  commitCache.set(cacheKey, info);
+  return info;
+}
+
+/**
+ * Batch fetch commit info for multiple SHAs.
+ * Returns { [sha]: commitInfo }.
+ */
+async function getCommitInfoBatch(repoSlug, shas) {
+  const results = {};
+  // Run in parallel with concurrency limit of 5
+  const chunks = [];
+  for (let i = 0; i < shas.length; i += 5) {
+    chunks.push(shas.slice(i, i + 5));
+  }
+  for (const chunk of chunks) {
+    const promises = chunk.map(async (sha) => {
+      const info = await getCommitInfo(repoSlug, sha);
+      if (info) results[sha] = info;
+    });
+    await Promise.all(promises);
+  }
+  return results;
+}
+
+module.exports = { getCommitInfo, getCommitInfoBatch, parseRepoSlug };

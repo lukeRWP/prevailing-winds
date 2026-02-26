@@ -4,6 +4,7 @@ const appRegistry = require('../services/appRegistry');
 const lifecycle = require('../services/lifecycleOrchestrator');
 const credentialGenerator = require('../services/credentialGenerator');
 const proxmoxClient = require('../services/proxmoxClient');
+const githubClient = require('../services/githubClient');
 
 const router = Router();
 
@@ -34,6 +35,25 @@ router.get('/api/_x_/infra/nodes', async (req, res) => {
   try {
     const nodes = await proxmoxClient.listNodes();
     return success(res, nodes, 'Cluster nodes retrieved');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
+// Fetch commit info from GitHub for a batch of SHAs
+router.get('/api/_x_/apps/:app/git/commits', async (req, res) => {
+  try {
+    const app = appRegistry.get(req.params.app);
+    if (!app) return error(res, `App '${req.params.app}' not found`, 404);
+
+    const repoSlug = githubClient.parseRepoSlug(app.repo);
+    if (!repoSlug) return error(res, 'No GitHub repo configured for this app', 400);
+
+    const shas = (req.query.shas || '').split(',').filter(Boolean).slice(0, 20);
+    if (shas.length === 0) return error(res, 'shas query parameter required', 400);
+
+    const commits = await githubClient.getCommitInfoBatch(repoSlug, shas);
+    return success(res, commits, 'Commit info retrieved');
   } catch (err) {
     return error(res, err.message, 500);
   }
