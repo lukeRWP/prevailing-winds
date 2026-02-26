@@ -17,13 +17,15 @@ const SERVICE_LOG_COMMANDS = {
 };
 
 // Map service names to streaming commands (tail -f or journalctl -f)
+// journalctl -f buffers initial -n lines over SSH (no PTY). Work around this
+// by dumping the snapshot first (exits → flushes), then exec into follow mode.
 const SERVICE_STREAM_COMMANDS = {
-  'app-server': 'sudo journalctl -u imp-server -f -n 50 -o short-iso',
-  'app-client': 'sudo journalctl -u imp-client -f -n 50 -o short-iso',
+  'app-server': 'sudo journalctl -u imp-server -n 50 --no-pager -o short-iso; exec sudo journalctl -u imp-server -f -n 0 -o short-iso',
+  'app-client': 'sudo journalctl -u imp-client -n 50 --no-pager -o short-iso; exec sudo journalctl -u imp-client -f -n 0 -o short-iso',
   'nginx-access': 'sudo tail -f -n 50 /var/log/nginx/access.log',
   'nginx-error': 'sudo tail -f -n 50 /var/log/nginx/error.log',
   'mysql': 'sudo tail -f -n 50 /var/log/mysql/error.log',
-  'minio': 'sudo journalctl -u minio -f -n 50 -o short-iso',
+  'minio': 'sudo journalctl -u minio -n 50 --no-pager -o short-iso; exec sudo journalctl -u minio -f -n 0 -o short-iso',
 };
 
 // Map service names to the VM role that runs them
