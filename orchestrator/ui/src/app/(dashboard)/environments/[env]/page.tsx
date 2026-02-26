@@ -3,12 +3,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Terminal, Play, Square, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Terminal, Play, Square, RotateCcw, ArrowRightLeft } from 'lucide-react';
 import { VmCard } from '@/components/environments/vm-card';
 import { ConfirmationDialog } from '@/components/actions/confirmation-dialog';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/hooks/use-app';
 import type { EnvironmentStatus, EnvironmentManifest } from '@/types/api';
+
+interface ClusterNode {
+  node: string;
+  status: string;
+}
 
 const ENV_BADGE: Record<string, string> = {
   dev: 'bg-blue-500/20 text-blue-400',
@@ -29,18 +34,37 @@ export default function EnvironmentDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null);
 
+  // Migration state
+  const [nodes, setNodes] = useState<ClusterNode[]>([]);
+  const [migrateTarget, setMigrateTarget] = useState<{ vmid: number; vmName: string; currentNode: string } | null>(null);
+  const [migrateAllTarget, setMigrateAllTarget] = useState<string | null>(null);
+  const [migrateLoading, setMigrateLoading] = useState(false);
+  const [migrateResult, setMigrateResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    if (!currentApp) return;
+    try {
+      const res = await fetch(`/api/proxy/_x_/apps/${currentApp}/envs/${envName}/status`).then((r) => r.json());
+      if (res.success) setStatus(res.data);
+    } catch {
+      // silent
+    }
+  }, [currentApp, envName]);
+
   useEffect(() => {
     async function fetch_data() {
       try {
-        const [statusRes, appRes] = await Promise.all([
+        const [statusRes, appRes, nodesRes] = await Promise.all([
           fetch(`/api/proxy/_x_/apps/${currentApp}/envs/${envName}/status`).then((r) => r.json()),
           fetch(`/api/proxy/_x_/apps/${currentApp}`).then((r) => r.json()),
+          fetch('/api/proxy/_x_/infra/nodes').then((r) => r.json()),
         ]);
 
         if (statusRes.success) setStatus(statusRes.data);
         if (appRes.success) {
           setManifest(appRes.data.environments?.[envName] || null);
         }
+        if (nodesRes.success) setNodes(nodesRes.data || []);
       } catch {
         // silent
       } finally {
@@ -68,6 +92,70 @@ export default function EnvironmentDetailPage() {
       setConfirmAction(null);
     }
   }, [currentApp, envName, router]);
+
+  const getOtherNode = useCallback((currentNode: string) => {
+    const onlineNodes = nodes.filter((n) => n.status === 'online' && n.node !== currentNode);
+    return onlineNodes[0]?.node || null;
+  }, [nodes]);
+
+  const handleMigrateOne = useCallback(async () => {
+    if (!currentApp || !migrateTarget) return;
+    const targetNode = getOtherNode(migrateTarget.currentNode);
+    if (!targetNode) return;
+
+    setMigrateLoading(true);
+    setMigrateResult(null);
+    try {
+      const res = await fetch(`/api/proxy/_y_/apps/${currentApp}/envs/${envName}/vms/migrate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vmid: migrateTarget.vmid, targetNode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMigrateResult({ success: true, message: data.message || 'Migration complete' });
+        await fetchStatus();
+      } else {
+        setMigrateResult({ success: false, message: data.message || 'Migration failed' });
+      }
+    } catch (err) {
+      setMigrateResult({ success: false, message: 'Migration request failed' });
+    } finally {
+      setMigrateLoading(false);
+    }
+  }, [currentApp, envName, migrateTarget, getOtherNode, fetchStatus]);
+
+  const handleMigrateAll = useCallback(async () => {
+    if (!currentApp || !migrateAllTarget || !status?.vms) return;
+
+    setMigrateLoading(true);
+    setMigrateResult(null);
+    const vmsToMigrate = status.vms.filter((vm) => vm.node !== migrateAllTarget);
+
+    let migrated = 0;
+    let failed = 0;
+    for (const vm of vmsToMigrate) {
+      try {
+        const res = await fetch(`/api/proxy/_y_/apps/${currentApp}/envs/${envName}/vms/migrate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vmid: vm.vmid, targetNode: migrateAllTarget }),
+        });
+        const data = await res.json();
+        if (data.success) migrated++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+    }
+
+    setMigrateResult({
+      success: failed === 0,
+      message: `Migrated ${migrated}/${vmsToMigrate.length} VMs${failed > 0 ? ` (${failed} failed)` : ''}`,
+    });
+    await fetchStatus();
+    setMigrateLoading(false);
+  }, [currentApp, envName, migrateAllTarget, status, fetchStatus]);
 
   const badgeClass = ENV_BADGE[envName] || 'bg-zinc-500/20 text-zinc-400';
 
@@ -131,6 +219,24 @@ export default function EnvironmentDetailPage() {
               <RotateCcw className="h-3 w-3" />
               Restart
             </button>
+            {nodes.length > 1 && (
+              <div className="relative">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) setMigrateAllTarget(e.target.value);
+                  }}
+                  value=""
+                  disabled={migrateLoading}
+                  className="flex items-center gap-1.5 rounded-md border border-violet-500/50 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-violet-500/20 disabled:opacity-50 transition-colors appearance-none cursor-pointer pr-6"
+                >
+                  <option value="" disabled>Migrate All...</option>
+                  {nodes.filter((n) => n.status === 'online').map((n) => (
+                    <option key={n.node} value={n.node}>→ {n.node}</option>
+                  ))}
+                </select>
+                <ArrowRightLeft className="h-3 w-3 absolute right-2 top-1/2 -translate-y-1/2 text-violet-400 pointer-events-none" />
+              </div>
+            )}
           </div>
         </div>
         {status && (
@@ -182,6 +288,10 @@ export default function EnvironmentDetailPage() {
                 status={vm.status}
                 vmid={vm.vmid}
                 proxmoxNode={vm.node}
+                onMigrate={nodes.length > 1 ? (vmid, currentNode) => {
+                  setMigrateTarget({ vmid, vmName: vm.name, currentNode });
+                  setMigrateResult(null);
+                } : undefined}
               />
             );
           })}
@@ -228,6 +338,56 @@ export default function EnvironmentDetailPage() {
         onCancel={() => setConfirmAction(null)}
         loading={actionLoading}
       />
+
+      {/* Single VM Migration Dialog */}
+      <ConfirmationDialog
+        open={migrateTarget !== null}
+        title={`Migrate VM`}
+        description={
+          migrateTarget
+            ? `Migrate ${migrateTarget.vmName} from ${migrateTarget.currentNode} to ${getOtherNode(migrateTarget.currentNode) || '?'}? This performs a live migration — the VM stays running during the move.`
+            : ''
+        }
+        severity="warning"
+        confirmText="Migrate"
+        onConfirm={handleMigrateOne}
+        onCancel={() => { setMigrateTarget(null); setMigrateResult(null); }}
+        loading={migrateLoading}
+      />
+
+      {/* Migrate All Dialog */}
+      <ConfirmationDialog
+        open={migrateAllTarget !== null}
+        title={`Migrate All VMs`}
+        description={
+          migrateAllTarget
+            ? `Migrate all ${envName.toUpperCase()} VMs to ${migrateAllTarget}? VMs already on that node will be skipped. This performs live migration — VMs stay running.`
+            : ''
+        }
+        severity="warning"
+        confirmText="Migrate All"
+        onConfirm={handleMigrateAll}
+        onCancel={() => { setMigrateAllTarget(null); setMigrateResult(null); }}
+        loading={migrateLoading}
+      />
+
+      {/* Migration Result Toast */}
+      {migrateResult && (
+        <div className={cn(
+          'fixed bottom-4 right-4 rounded-lg border px-4 py-3 text-sm shadow-lg',
+          migrateResult.success
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+            : 'border-red-500/30 bg-red-500/10 text-red-400'
+        )}>
+          {migrateResult.message}
+          <button
+            onClick={() => setMigrateResult(null)}
+            className="ml-3 text-xs opacity-60 hover:opacity-100"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Monitor, Server, Database, HardDrive } from 'lucide-react';
+import { Monitor, Server, Database, HardDrive, ArrowRightLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ROLE_ICONS: Record<string, React.ElementType> = {
@@ -22,9 +22,10 @@ interface VmCardProps {
   vmid?: number;
   proxmoxNode?: string;
   services?: string[];
+  onMigrate?: (vmid: number, currentNode: string) => void;
 }
 
-export function VmCard({ role, ip, externalIp, status, vmid, proxmoxNode, services }: VmCardProps) {
+export function VmCard({ role, ip, externalIp, status, vmid, proxmoxNode, services, onMigrate }: VmCardProps) {
   const Icon = ROLE_ICONS[role] || Server;
   const badge = STATUS_BADGE[status] || STATUS_BADGE.unknown;
 
@@ -44,7 +45,23 @@ export function VmCard({ role, ip, externalIp, status, vmid, proxmoxNode, servic
         <DetailLine label="IP" value={ip} mono />
         {externalIp && <DetailLine label="External" value={externalIp} mono />}
         {vmid !== undefined && <DetailLine label="VM ID" value={String(vmid)} mono />}
-        {proxmoxNode && <DetailLine label="Node" value={proxmoxNode} />}
+        {proxmoxNode && (
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Node</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-foreground">{proxmoxNode}</span>
+              {onMigrate && vmid !== undefined && (
+                <button
+                  onClick={() => onMigrate(vmid, proxmoxNode)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                  title="Migrate to another node"
+                >
+                  <ArrowRightLeft className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {services && services.length > 0 && (

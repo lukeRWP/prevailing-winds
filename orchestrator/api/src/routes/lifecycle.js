@@ -29,6 +29,16 @@ router.post('/api/_y_/apps/:app/envs/:env/secrets/generate', async (req, res) =>
   }
 });
 
+// List Proxmox cluster nodes
+router.get('/api/_x_/infra/nodes', async (req, res) => {
+  try {
+    const nodes = await proxmoxClient.listNodes();
+    return success(res, nodes, 'Cluster nodes retrieved');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+});
+
 // Verify infra secrets exist in Vault
 router.get('/api/_x_/infra/secrets/verify', async (req, res) => {
   try {

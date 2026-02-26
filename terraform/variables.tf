@@ -108,6 +108,12 @@ variable "prod_db_node" {
   default     = "prx002"
 }
 
+variable "ha_group" {
+  description = "HA group name for VMs in this workspace (e.g. pw-shared, imp-dev)"
+  type        = string
+  default     = "RWP-DC-PAIR"
+}
+
 # ---------------------------------------------------------------------------
 # UniFi Network Controller
 # ---------------------------------------------------------------------------

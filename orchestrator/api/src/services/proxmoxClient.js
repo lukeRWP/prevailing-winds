@@ -507,12 +507,73 @@ async function prepareVMAccess(appName, envName, envConfig, sshPublicKey) {
   return { prepared, failed };
 }
 
+/**
+ * List all Proxmox cluster nodes and their online status.
+ */
+async function listNodes() {
+  const nodes = await apiRequest('GET', '/nodes');
+  return nodes.map((n) => ({
+    node: n.node,
+    status: n.status,
+    cpu: n.cpu,
+    maxcpu: n.maxcpu,
+    mem: n.mem,
+    maxmem: n.maxmem,
+    uptime: n.uptime,
+  }));
+}
+
+/**
+ * Trigger live migration of a VM to another node.
+ * Returns the Proxmox task UPID for progress tracking.
+ */
+async function migrateVM(sourceNode, vmid, targetNode, online = true) {
+  logger.info(CONTEXT, `Migrating VM ${vmid} from ${sourceNode} to ${targetNode} (online=${online})`);
+  const result = await apiRequest('POST', `/nodes/${sourceNode}/qemu/${vmid}/migrate`, {
+    target: targetNode,
+    online: online ? 1 : 0,
+  });
+  // Proxmox returns the UPID as a string
+  const upid = typeof result === 'string' ? result : result.data || result;
+  logger.info(CONTEXT, `Migration task started: ${upid}`);
+  return upid;
+}
+
+/**
+ * Wait for a Proxmox task to complete.
+ * Proxmox tasks have status "running" while active and "stopped" when finished.
+ * exitstatus is "OK" on success.
+ */
+async function waitForTask(node, upid, maxWaitMs = 300000) {
+  const start = Date.now();
+  const encodedUpid = encodeURIComponent(upid);
+
+  while (Date.now() - start < maxWaitMs) {
+    const status = await apiRequest('GET', `/nodes/${node}/tasks/${encodedUpid}/status`);
+
+    if (status.status === 'stopped') {
+      if (status.exitstatus === 'OK') {
+        logger.info(CONTEXT, `Task completed successfully: ${upid}`);
+        return status;
+      }
+      throw new Error(`Task failed: ${status.exitstatus || 'unknown error'}`);
+    }
+
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  throw new Error(`Task ${upid} did not complete within ${maxWaitMs / 1000}s`);
+}
+
 module.exports = {
   listVMs,
+  listNodes,
   findEnvironmentVMs,
   destroyEnvironmentVMs,
   ensureCloudInitSnippet,
   prepareVMAccess,
   guestExec,
   waitForGuestAgent,
+  migrateVM,
+  waitForTask,
 };

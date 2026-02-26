@@ -65,6 +65,38 @@ router.post('/api/_y_/apps/:app/envs/:env/restart', async (req, res) => {
   return success(res, { opId }, 'Environment restart queued', 202);
 });
 
+// Migrate a VM to another Proxmox node
+router.post('/api/_y_/apps/:app/envs/:env/vms/migrate', async (req, res) => {
+  const ctx = requireAppEnv(req, res);
+  if (!ctx) return;
+
+  const { vmid, targetNode } = req.body || {};
+  if (!vmid || !targetNode) {
+    return error(res, 'vmid and targetNode are required', 400);
+  }
+
+  try {
+    // Verify the VM belongs to this environment
+    const vms = await proxmoxClient.findEnvironmentVMs(ctx.appName, ctx.envName, ctx.env);
+    const vm = vms.find((v) => v.vmid === vmid);
+    if (!vm) {
+      return error(res, `VM ${vmid} not found in ${ctx.appName}:${ctx.envName}`, 404);
+    }
+
+    if (vm.node === targetNode) {
+      return success(res, { vmid, from: vm.node, to: targetNode }, 'VM already on target node');
+    }
+
+    // Trigger migration and wait for completion
+    const upid = await proxmoxClient.migrateVM(vm.node, vmid, targetNode);
+    await proxmoxClient.waitForTask(vm.node, upid);
+
+    return success(res, { vmid, name: vm.name, from: vm.node, to: targetNode }, 'VM migrated successfully');
+  } catch (err) {
+    return error(res, `Migration failed: ${err.message}`, 500);
+  }
+});
+
 // Generate/preview Ansible inventory from app manifest
 router.get('/api/_x_/apps/:app/envs/:env/inventory', (req, res) => {
   const ctx = requireAppEnv(req, res);
