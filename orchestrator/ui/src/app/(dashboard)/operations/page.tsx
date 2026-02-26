@@ -7,7 +7,9 @@ import { RefreshCw } from 'lucide-react';
 import { useApp } from '@/hooks/use-app';
 import { AppSection } from '@/components/layout/app-section';
 import type { AppSummary } from '@/lib/app-context';
-import type { Operation } from '@/types/api';
+import type { Operation, CommitInfo } from '@/types/api';
+
+const PAGE_SIZE = 50;
 
 export default function OperationsPage() {
   const { apps } = useApp();
@@ -44,10 +46,14 @@ function AppOperations({ app, refreshKey }: { app: AppSummary; refreshKey: numbe
   const [env, setEnv] = useState('');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
+  const [search, setSearch] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [commitInfoMap, setCommitInfoMap] = useState<Record<string, CommitInfo>>({});
 
-  const fetchOps = useCallback(async () => {
+  const fetchOps = useCallback(async (offset = 0, append = false) => {
     try {
-      const params = new URLSearchParams({ limit: '50', app: app.name });
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), app: app.name, offset: String(offset) });
       if (env) params.set('env', env);
       if (status) params.set('status', status);
 
@@ -56,20 +62,65 @@ function AppOperations({ app, refreshKey }: { app: AppSummary; refreshKey: numbe
       if (data.success) {
         let ops = data.data as Operation[];
         if (type) ops = ops.filter((o) => o.type === type);
-        setOperations(ops);
+        if (append) {
+          setOperations((prev) => [...prev, ...ops]);
+        } else {
+          setOperations(ops);
+        }
+        setHasMore(data.data.length === PAGE_SIZE);
       }
     } catch {
       // silent
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [app.name, env, status, type]);
 
   useEffect(() => {
     fetchOps();
-    const interval = setInterval(fetchOps, 10000);
+    const interval = setInterval(() => fetchOps(), 10000);
     return () => clearInterval(interval);
   }, [fetchOps, refreshKey]);
+
+  // Fetch commit info for SHA refs
+  useEffect(() => {
+    const shaRefs = operations
+      .map((op) => op.ref)
+      .filter((ref): ref is string => !!ref && /^[0-9a-f]{7,40}$/.test(ref))
+      .filter((sha) => !commitInfoMap[sha]);
+    const unique = [...new Set(shaRefs)].slice(0, 20);
+    if (unique.length === 0 || !app.name) return;
+
+    fetch(`/api/proxy/_x_/apps/${app.name}/git/commits?shas=${unique.join(',')}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          setCommitInfoMap((prev) => ({ ...prev, ...data.data }));
+        }
+      })
+      .catch(() => { /* silent */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operations.map((o) => o.ref).join(','), app.name]);
+
+  function handleLoadMore() {
+    setLoadingMore(true);
+    fetchOps(operations.length, true);
+  }
+
+  // Client-side search filter
+  const filtered = search
+    ? operations.filter((op) => {
+        const q = search.toLowerCase();
+        return (
+          op.ref?.toLowerCase().includes(q) ||
+          op.type.toLowerCase().includes(q) ||
+          op.initiated_by?.toLowerCase().includes(q) ||
+          op.id.toLowerCase().includes(q) ||
+          op.env?.toLowerCase().includes(q)
+        );
+      })
+    : operations;
 
   return (
     <div className="space-y-4">
@@ -77,14 +128,29 @@ function AppOperations({ app, refreshKey }: { app: AppSummary; refreshKey: numbe
         env={env}
         status={status}
         type={type}
+        search={search}
         onEnvChange={setEnv}
         onStatusChange={setStatus}
         onTypeChange={setType}
+        onSearchChange={setSearch}
       />
       {loading && operations.length === 0 ? (
         <p className="text-sm text-muted-foreground">Loading operations...</p>
       ) : (
-        <OperationsTable operations={operations} />
+        <>
+          <OperationsTable operations={filtered} commitInfoMap={commitInfoMap} />
+          {hasMore && !search && (
+            <div className="text-center">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="rounded-md border border-border bg-card px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
