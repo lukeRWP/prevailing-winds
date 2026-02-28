@@ -61,8 +61,26 @@ function lockKey(app, env) {
   return `${app}:${env}`;
 }
 
+function validateCallbackUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return null;
+    // Block private IPs and metadata endpoints
+    const host = parsed.hostname;
+    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.|169\.254\.|localhost$)/i.test(host)) {
+      logger.warn('executor', `Blocked callback to private/reserved address: ${host}`);
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 async function enqueue(app, env, type, { ref, vars, callbackUrl, dryRun, initiatedBy } = {}) {
-  const opId = queue.create({ app, env, type, ref, vars, callbackUrl, initiatedBy });
+  const safeCallbackUrl = validateCallbackUrl(callbackUrl);
+  const opId = queue.create({ app, env, type, ref, vars, callbackUrl: safeCallbackUrl, initiatedBy });
   logger.info('executor', `Enqueued ${type} for ${app}:${env} — op ${opId}`);
   setImmediate(() => processQueue(app, env));
   return opId;
@@ -457,8 +475,15 @@ function buildTerraformCmd(infraDir, action, workspace, manifest, vars) {
     actionArgs.push(`-var-file=${tfvarsFile}`);
   }
   if (vars && Object.keys(vars).length > 0) {
+    const TF_VAR_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
     for (const [k, v] of Object.entries(vars)) {
-      actionArgs.push('-var', `${k}=${v}`);
+      if (!TF_VAR_KEY_RE.test(k)) {
+        logger.warn('executor', `Skipping invalid terraform var key: ${k}`);
+        continue;
+      }
+      // Shell-escape value by wrapping in single quotes
+      const escaped = String(v).replace(/'/g, "'\\''");
+      actionArgs.push(`-var '${k}=${escaped}'`);
     }
   }
   const tfCmd = `terraform ${actionArgs.join(' ')}`;

@@ -6,6 +6,12 @@ const logger = require('../utils/logger');
 const SSH_KEY = process.env.ANSIBLE_PRIVATE_KEY_FILE || path.join(config.orchestratorHome, '.ssh', 'deploy_key');
 const SSH_USER = config.infra.deployUser || 'deploy';
 
+const SAFE_HOST_RE = /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/;
+
+function validateHost(h) {
+  if (!h || !SAFE_HOST_RE.test(h)) throw new Error(`Invalid host: ${h}`);
+}
+
 // Map service names to log commands on the remote host
 const SERVICE_LOG_COMMANDS = {
   'app-server': 'sudo journalctl -u imp-server -n {lines} --no-pager -o short-iso',
@@ -55,12 +61,14 @@ const SERVICE_TO_ROLE = {
  * @returns {Promise<string[]>} Array of log lines
  */
 function snapshot(host, service, lines = 500) {
+  validateHost(host);
   const cmdTemplate = SERVICE_LOG_COMMANDS[service];
   if (!cmdTemplate) {
     return Promise.reject(new Error(`Unknown service: ${service}`));
   }
 
-  const cmd = cmdTemplate.replace('{lines}', String(lines));
+  const safeLines = Math.max(1, Math.min(Math.floor(Number(lines)) || 500, 10000));
+  const cmd = cmdTemplate.replace('{lines}', String(safeLines));
 
   return new Promise((resolve, reject) => {
     const proc = spawn('ssh', [
@@ -105,6 +113,7 @@ function snapshot(host, service, lines = 500) {
  * @returns {{ kill: () => void }} Handle to stop the stream
  */
 function stream(host, service, res) {
+  validateHost(host);
   const cmd = SERVICE_STREAM_COMMANDS[service];
   if (!cmd) {
     throw new Error(`Unknown service: ${service}`);

@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const config = require('./src/config');
 const logger = require('./src/utils/logger');
 const { createAuthMiddleware } = require('./src/middleware/auth');
+const { createRateLimiter } = require('./src/middleware/rateLimit');
 const { validateParams } = require('./src/middleware/validation');
 const { errorHandler } = require('./src/middleware/errorHandler');
 const vault = require('./src/services/vault');
@@ -50,7 +51,16 @@ async function start() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors());
+  app.use(cors({
+    origin: [
+      'https://pw.razorwire-productions.com',
+      /^https?:\/\/10\.0\.5\.\d{1,3}(:\d+)?$/,   // Management VLAN
+      /^https?:\/\/localhost(:\d+)?$/,
+      /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+    ],
+    credentials: true,
+  }));
+  app.use(createRateLimiter({ windowMs: 60000, max: 200 }));
   app.use(express.json());
   app.use(createAuthMiddleware());
 

@@ -51,7 +51,7 @@ router.get('/api/_x_/apps/:app/envs/:env/server-logs/snapshot', async (req, res)
     return error(res, `Invalid service. Must be one of: ${VALID_SERVICES.join(', ')}`, 400);
   }
 
-  const host = req.query.host || resolveHost(app, env, service);
+  const host = resolveHost(app, env, service);
   if (!host) {
     return error(res, `No host found for service '${service}' in ${app}/${env}`, 404);
   }
@@ -74,7 +74,7 @@ router.get('/api/_x_/apps/:app/envs/:env/server-logs/stream', (req, res) => {
     return res.status(400).json({ success: false, message: `Invalid service. Must be one of: ${VALID_SERVICES.join(', ')}` });
   }
 
-  const host = req.query.host || resolveHost(app, env, service);
+  const host = resolveHost(app, env, service);
   if (!host) {
     return res.status(404).json({ success: false, message: `No host found for service '${service}' in ${app}/${env}` });
   }

@@ -1,6 +1,16 @@
+const crypto = require('crypto');
 const { error } = require('../utils/response');
 const logger = require('../utils/logger');
 const config = require('../config');
+
+/**
+ * Constant-time string comparison to prevent timing attacks on token values.
+ */
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 // Routes that require admin token (no app-scoped access)
 const ADMIN_ONLY_PATTERNS = [
@@ -52,7 +62,7 @@ function createAuthMiddleware() {
     const token = header.slice(7);
 
     // Check admin token first
-    if (config.adminToken && token === config.adminToken) {
+    if (config.adminToken && safeCompare(token, config.adminToken)) {
       req.authRole = 'admin';
       req.authorizedApp = null; // Admin can access everything
       return next();
@@ -60,13 +70,7 @@ function createAuthMiddleware() {
 
     // Admin-only routes reject non-admin tokens
     if (isAdminOnly(req)) {
-      // Check if it might be a valid app token (for better error message)
-      const appTokens = config.appTokens;
-      const isAppToken = Object.values(appTokens).includes(token);
-      if (isAppToken) {
-        return error(res, 'This endpoint requires admin access', 403);
-      }
-      return error(res, 'Invalid token', 403);
+      return error(res, 'Forbidden', 403);
     }
 
     // App-scoped routes — match token to app
@@ -75,18 +79,18 @@ function createAuthMiddleware() {
 
     if (!appName) {
       // Non-app routes (like /api/_x_/ops) — require admin or any valid app token
-      const matchedApp = Object.entries(appTokens).find(([, t]) => t === token);
+      const matchedApp = Object.entries(appTokens).find(([, t]) => safeCompare(t, token));
       if (matchedApp) {
         req.authRole = 'app';
         req.authorizedApp = matchedApp[0];
         return next();
       }
-      return error(res, 'Invalid token', 403);
+      return error(res, 'Forbidden', 403);
     }
 
     // App-specific route — token must match this specific app
     const expectedToken = appTokens[appName];
-    if (expectedToken && token === expectedToken) {
+    if (expectedToken && safeCompare(token, expectedToken)) {
       req.authRole = 'app';
       req.authorizedApp = appName;
       return next();
@@ -98,7 +102,7 @@ function createAuthMiddleware() {
       return error(res, 'Server authentication not configured', 503);
     }
 
-    return error(res, 'Invalid token for this app', 403);
+    return error(res, 'Forbidden', 403);
   };
 }
 

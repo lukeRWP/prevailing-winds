@@ -7,11 +7,29 @@ const SSH_KEY = process.env.ANSIBLE_PRIVATE_KEY_FILE || path.join(config.orchest
 const SSH_USER = config.infra.deployUser || 'deploy';
 const SSH_OPTS = ['-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes'];
 
+// Only allow safe characters in paths and patterns to prevent shell injection.
+const SAFE_PATH_RE = /^[a-zA-Z0-9_.\-\/]+$/;
+const SAFE_PATTERN_RE = /^[a-zA-Z0-9_.\-*?]+$/;
+const SAFE_HOST_RE = /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/;
+
+function validatePath(p) {
+  if (!p || !SAFE_PATH_RE.test(p)) throw new Error(`Invalid path: ${p}`);
+}
+function validatePattern(p) {
+  if (!p || !SAFE_PATTERN_RE.test(p)) throw new Error(`Invalid pattern: ${p}`);
+}
+function validateHost(h) {
+  if (!h || !SAFE_HOST_RE.test(h)) throw new Error(`Invalid host: ${h}`);
+}
+
 /**
  * List files in a remote directory matching a glob pattern.
  * Returns array of { name, size, modified } sorted newest-first.
  */
 function listFiles(host, remotePath, pattern = '*') {
+  validateHost(host);
+  validatePath(remotePath);
+  validatePattern(pattern);
   const cmd = `find ${remotePath} -maxdepth 1 -name '${pattern}' -type f -printf '%f\\t%s\\t%T@\\n' 2>/dev/null | sort -t$'\\t' -k3 -rn`;
 
   return new Promise((resolve, reject) => {
@@ -48,6 +66,8 @@ function listFiles(host, remotePath, pattern = '*') {
  * Returns size in bytes, or null if file doesn't exist.
  */
 function statFile(host, remotePath) {
+  validateHost(host);
+  validatePath(remotePath);
   const cmd = `stat -c '%s' '${remotePath}' 2>/dev/null`;
 
   return new Promise((resolve, reject) => {
@@ -76,6 +96,8 @@ function statFile(host, remotePath) {
  * Returns a handle with kill() to abort.
  */
 function streamFile(host, remotePath, writableStream) {
+  validateHost(host);
+  validatePath(remotePath);
   const proc = spawn('ssh', [
     '-i', SSH_KEY, ...SSH_OPTS,
     `${SSH_USER}@${host}`,
@@ -118,6 +140,9 @@ function streamFile(host, remotePath, writableStream) {
  * SCP a local file to a remote host.
  */
 function uploadFile(localPath, host, remotePath) {
+  validateHost(host);
+  validatePath(localPath);
+  validatePath(remotePath);
   return new Promise((resolve, reject) => {
     const proc = spawn('scp', [
       '-i', SSH_KEY, ...SSH_OPTS,
