@@ -121,6 +121,33 @@ resource "proxmox_virtual_environment_firewall_rules" "cluster" {
     comment = "ICMP from remote network"
   }
 
+  # --- Teleport VPN access to nodes ---
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = var.teleport_cidr
+    comment = "SSH to nodes from Teleport"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8006"
+    source  = var.teleport_cidr
+    comment = "Proxmox web UI from Teleport"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "icmp"
+    source  = var.teleport_cidr
+    comment = "ICMP from Teleport"
+  }
+
   rule {
     type    = "in"
     action  = "ACCEPT"
@@ -212,6 +239,12 @@ variable "remote_cidr" {
   default     = "10.0.27.0/24"
 }
 
+variable "teleport_cidr" {
+  description = "UniFi Teleport VPN CIDR (192.168.6.0/24)"
+  type        = string
+  default     = "192.168.6.0/24"
+}
+
 variable "env_cidrs" {
   description = "Map of environment name to CIDR for per-env security groups"
   type        = map(string)
@@ -248,6 +281,15 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
     comment = "SSH from workstation LAN"
   }
 
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "22"
+    source  = var.teleport_cidr
+    comment = "SSH from Teleport"
+  }
+
   # Orchestrator connects to env VMs from its per-VLAN IP (.2 on each env subnet).
   # Without these rules, Ansible provisioning fails because the orchestrator's
   # source IP doesn't match the management CIDR.
@@ -269,7 +311,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh" {
 # ---------------------------------------------------------------
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "icmp" {
   name    = "pw-icmp"
-  comment = "ICMP ping from management network only"
+  comment = "ICMP ping from management and Teleport networks"
 
   rule {
     type    = "in"
@@ -277,6 +319,14 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "icmp" {
     proto   = "icmp"
     source  = var.internal_cidr
     comment = "ICMP from management"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "icmp"
+    source  = var.teleport_cidr
+    comment = "ICMP from Teleport"
   }
 }
 
@@ -464,6 +514,24 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "orchestr
     dport   = "3100"
     source  = var.remote_cidr
     comment = "Orchestrator UI from remote network"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "8500"
+    source  = var.teleport_cidr
+    comment = "Orchestrator API from Teleport"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3100"
+    source  = var.teleport_cidr
+    comment = "Orchestrator UI from Teleport"
   }
 }
 

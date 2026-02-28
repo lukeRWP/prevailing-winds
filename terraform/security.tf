@@ -8,6 +8,7 @@ module "security" {
   internal_cidr    = "10.0.5.0/24"
   workstation_cidr = "10.0.87.0/24"
   remote_cidr      = "10.0.27.0/24"
+  teleport_cidr    = "192.168.6.0/24"
   env_cidrs = {
     mgmt = "10.0.5.0/24"
     dev  = "10.0.100.0/24"
