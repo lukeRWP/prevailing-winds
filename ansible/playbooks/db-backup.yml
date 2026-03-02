@@ -5,10 +5,12 @@
 - name: "Backup {{ app_name | upper }} databases"
   hosts: "{{ group_databases }}"
   become: yes
+  vars:
+    _backup_dir: "{{ mysql_backup_dir | default('/opt/' + app_name + '-db/backups') }}"
   tasks:
     - name: Ensure backup directory exists
       file:
-        path: "{{ mysql_backup_dir }}"
+        path: "{{ _backup_dir }}"
         state: directory
         owner: root
         group: root
@@ -18,17 +20,17 @@
       command: >
         mysqldump -u root -p{{ mysql_root_password }}
         --all-databases --single-transaction --routines --triggers
-        --result-file={{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
+        --result-file={{ _backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
       no_log: true
 
     - name: Compress backup
-      command: gzip {{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
+      command: gzip {{ _backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql
       args:
-        creates: "{{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
+        creates: "{{ _backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
 
     - name: Remove backups older than 30 days
       find:
-        paths: "{{ mysql_backup_dir }}"
+        paths: "{{ _backup_dir }}"
         patterns: "backup-*.sql.gz"
         age: 30d
       register: old_backups
@@ -42,4 +44,4 @@
 
     - name: Report backup status
       debug:
-        msg: "Database backup complete: {{ mysql_backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
+        msg: "Database backup complete: {{ _backup_dir }}/backup-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
